@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Shield, Sparkles, Clock, History } from "lucide-react";
 import { ping, Session, getActiveSession } from "./lib/api";
 import { SessionSetup } from "./components/SessionSetup";
+import { SessionTimer } from "./components/SessionTimer";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<"setup" | "timer" | "dashboard">("setup");
@@ -129,35 +130,14 @@ export function App() {
           )}
 
           {activeTab === "timer" && (
-            <div className="bg-surface-card/60 backdrop-blur-md rounded-2xl border border-slate-800/80 p-12 shadow-xl flex flex-col items-center justify-center text-center">
-              <div className="w-16 h-16 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4">
-                <Clock className="w-8 h-8" />
-              </div>
-              {activeSession ? (
-                <div className="space-y-3 max-w-md">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    Phiên tập trung đang hoạt động
-                  </div>
-                  <h3 className="text-xl font-bold text-white">
-                    "{activeSession.goal}"
-                  </h3>
-                  <p className="text-sm text-slate-400">
-                    Thời lượng đã lên lịch: <strong className="text-indigo-400">{activeSession.plannedMinutes} phút</strong>.
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    (Màn hình đồng hồ đếm ngược chi tiết sẽ có trong Task 1.8)
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <h3 className="text-lg font-semibold text-white">Chưa có phiên hoạt động</h3>
-                  <p className="text-sm text-slate-400 mt-1 max-w-sm">
-                    Khởi tạo phiên mới từ thẻ Thiết lập (Session Setup) để bắt đầu đếm giờ và giám sát xao nhãng.
-                  </p>
-                </>
-              )}
-            </div>
+            <SessionTimer
+              session={activeSession}
+              onSessionEnded={() => {
+                setActiveSession(null);
+                setActiveTab("dashboard");
+              }}
+              onNavigateToSetup={() => setActiveTab("setup")}
+            />
           )}
 
           {activeTab === "dashboard" && (

@@ -135,6 +135,21 @@ export function SessionSetup({ onSessionStarted, onNavigateToTimer }: SessionSet
         onSessionStarted(session);
       }
     } catch (err) {
+      // If running in browser preview mode outside Tauri
+      const hasTauri = typeof window !== "undefined" && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+      if (!hasTauri) {
+        const mockSession: Session = {
+          id: 1,
+          goal: trimmedGoal,
+          plannedMinutes,
+          startedAt: new Date().toISOString(),
+        };
+        setActiveSession(mockSession);
+        if (onSessionStarted) {
+          onSessionStarted(mockSession);
+        }
+        return;
+      }
       const msg = typeof err === "string" ? err : "Không thể bắt đầu phiên tập trung.";
       setErrorMessage(msg);
     } finally {

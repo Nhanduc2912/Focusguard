@@ -11,6 +11,7 @@ vi.mock("./lib/api", () => ({
   addBlacklistItem: vi.fn(),
   removeBlacklistItem: vi.fn(),
   hideOverlay: vi.fn(),
+  getHistory: vi.fn().mockResolvedValue([]),
 }));
 
 describe("FocusGuard App Shell", () => {
