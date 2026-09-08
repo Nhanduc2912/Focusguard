@@ -4,6 +4,13 @@ import App from "./App";
 
 vi.mock("./lib/api", () => ({
   ping: vi.fn().mockResolvedValue("Backend connected (Tauri v2 + Rust)"),
+  getActiveSession: vi.fn().mockResolvedValue(null),
+  getBlacklist: vi.fn().mockResolvedValue([]),
+  startSession: vi.fn(),
+  endSession: vi.fn(),
+  addBlacklistItem: vi.fn(),
+  removeBlacklistItem: vi.fn(),
+  hideOverlay: vi.fn(),
 }));
 
 describe("FocusGuard App Shell", () => {

@@ -13,7 +13,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 - [x] 1.4 Rust background poller (process/window monitor, 1–2s interval)
 - [x] 1.5 Blacklist matching logic + unit tests (Đã hoàn thành trong phạm vi Task 1.4: matches_blacklist + test_blacklist_process_matching)
 - [x] 1.6 Overlay window (always-on-top, full-screen) triggered on distraction
-- [ ] 1.7 Frontend: SessionSetup screen (goal, duration, blacklist picker)
+- [x] 1.7 Frontend: SessionSetup screen (goal, duration, blacklist picker)
 - [ ] 1.8 Frontend: SessionTimer screen (live countdown, live distraction count)
 - [ ] 1.9 Frontend: session summary on end (planned vs actual, distractions)
 - [ ] 1.10 Frontend: Dashboard listing past sessions

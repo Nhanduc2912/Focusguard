@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
-import { Shield, Sparkles, Clock, History, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { ping } from "./lib/api";
+import { Shield, Sparkles, Clock, History } from "lucide-react";
+import { ping, Session, getActiveSession } from "./lib/api";
+import { SessionSetup } from "./components/SessionSetup";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<"setup" | "timer" | "dashboard">("setup");
   const [backendStatus, setBackendStatus] = useState<string>("Checking backend...");
   const [isTauriReady, setIsTauriReady] = useState<boolean>(false);
+  const [activeSession, setActiveSession] = useState<Session | null>(null);
 
   useEffect(() => {
     ping()
@@ -18,6 +20,15 @@ export function App() {
         setBackendStatus("Running in web preview mode");
         console.info("Tauri invoke info:", err);
       });
+
+    // Check if there is an active session on startup
+    getActiveSession()
+      .then((session) => {
+        if (session) {
+          setActiveSession(session);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   return (
@@ -108,46 +119,13 @@ export function App() {
         {/* Content Area */}
         <div className="flex-1">
           {activeTab === "setup" && (
-            <div className="bg-surface-card/60 backdrop-blur-md rounded-2xl border border-slate-800/80 p-8 shadow-xl">
-              <div className="max-w-xl">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold mb-4">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Scaffold Ready
-                </div>
-                <h2 className="text-2xl font-bold tracking-tight text-white mb-2">
-                  Ready to Start Focusing
-                </h2>
-                <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-                  FocusGuard monitors foreground windows during your focus session and triggers an
-                  always-on-top warning overlay if you open any blacklisted game or distraction app.
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
-                      <Clock className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm text-slate-200">Local-First Timer</h3>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Runs background polling in Rust, independent of frontend focus.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
-                      <AlertTriangle className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm text-slate-200">Intervention Overlay</h3>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Immediate friction when you drift away to distracting apps.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <SessionSetup
+              onSessionStarted={(session) => {
+                setActiveSession(session);
+                setActiveTab("timer");
+              }}
+              onNavigateToTimer={() => setActiveTab("timer")}
+            />
           )}
 
           {activeTab === "timer" && (
@@ -155,10 +133,30 @@ export function App() {
               <div className="w-16 h-16 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4">
                 <Clock className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-semibold text-white">No Active Session</h3>
-              <p className="text-sm text-slate-400 mt-1 max-w-sm">
-                Start a session from the Setup screen to begin tracking and distraction blocking.
-              </p>
+              {activeSession ? (
+                <div className="space-y-3 max-w-md">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    Phiên tập trung đang hoạt động
+                  </div>
+                  <h3 className="text-xl font-bold text-white">
+                    "{activeSession.goal}"
+                  </h3>
+                  <p className="text-sm text-slate-400">
+                    Thời lượng đã lên lịch: <strong className="text-indigo-400">{activeSession.plannedMinutes} phút</strong>.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    (Màn hình đồng hồ đếm ngược chi tiết sẽ có trong Task 1.8)
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <h3 className="text-lg font-semibold text-white">Chưa có phiên hoạt động</h3>
+                  <p className="text-sm text-slate-400 mt-1 max-w-sm">
+                    Khởi tạo phiên mới từ thẻ Thiết lập (Session Setup) để bắt đầu đếm giờ và giám sát xao nhãng.
+                  </p>
+                </>
+              )}
             </div>
           )}
 
