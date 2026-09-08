@@ -19,7 +19,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 - [x] 1.10 Frontend: Dashboard listing past sessions
 - [x] 1.11 End-to-end self-verification per skill, using Notepad/TextEdit as
       the test blacklist target
-- [ ] 1.12 Write `README.md` with build/run instructions and screenshots
+- [x] 1.12 Write `README.md` with build/run instructions and screenshots
 
 ## Phase 2 — Browser precision blocking
 - [ ] 2.1 WebExtension (Manifest V3) skeleton, Chrome + Firefox
