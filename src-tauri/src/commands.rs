@@ -1,16 +1,17 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::State;
 
 use crate::db::{self, BlacklistRecord, SessionRecord, SessionWithStats};
 
+#[derive(Clone)]
 pub struct AppState {
-    pub db: Mutex<rusqlite::Connection>,
+    pub db: Arc<Mutex<rusqlite::Connection>>,
 }
 
 impl AppState {
     pub fn new(conn: rusqlite::Connection) -> Self {
         Self {
-            db: Mutex::new(conn),
+            db: Arc::new(Mutex::new(conn)),
         }
     }
 }

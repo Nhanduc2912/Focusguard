@@ -10,7 +10,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
       `blacklist(id, name, type)`
 - [x] 1.3 Tauri commands: `start_session`, `end_session`, `get_history`,
       `add_blacklist_item`, `remove_blacklist_item`
-- [ ] 1.4 Rust background poller (process/window monitor, 1–2s interval)
+- [x] 1.4 Rust background poller (process/window monitor, 1–2s interval)
 - [ ] 1.5 Blacklist matching logic + unit tests
 - [ ] 1.6 Overlay window (always-on-top, full-screen) triggered on distraction
 - [ ] 1.7 Frontend: SessionSetup screen (goal, duration, blacklist picker)

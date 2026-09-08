@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod db;
+pub mod process_monitor;
 
 use commands::AppState;
 use tauri::Manager;
@@ -28,7 +29,15 @@ pub fn run() {
 
             db::init_db(&conn).expect("failed to initialize SQLite schema");
 
-            app.manage(AppState::new(conn));
+            let app_state = AppState::new(conn);
+
+            // Spawn background process monitor loop (polls every 1500ms when a session is active)
+            let monitor_state = app_state.clone();
+            tauri::async_runtime::spawn(async move {
+                process_monitor::start_polling(monitor_state, 1500).await;
+            });
+
+            app.manage(app_state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
