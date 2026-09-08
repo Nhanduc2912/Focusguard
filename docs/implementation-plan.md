@@ -17,7 +17,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 - [x] 1.8 Frontend: SessionTimer screen (live countdown, live distraction count)
 - [x] 1.9 Frontend: session summary on end (planned vs actual, distractions)
 - [x] 1.10 Frontend: Dashboard listing past sessions
-- [ ] 1.11 End-to-end self-verification per skill, using Notepad/TextEdit as
+- [x] 1.11 End-to-end self-verification per skill, using Notepad/TextEdit as
       the test blacklist target
 - [ ] 1.12 Write `README.md` with build/run instructions and screenshots
 
