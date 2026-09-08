@@ -1,0 +1,25 @@
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri / Rust
+src-tauri/target/
+Cargo.lock
+
+# Databases
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Logs & Editor
+*.log
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

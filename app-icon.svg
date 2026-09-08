@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#4338ca" />
+    </linearGradient>
+    <linearGradient id="innerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer Shield -->
+  <path d="M256 32 L432 96 C432 288 336 416 256 480 C176 416 80 288 80 96 Z" fill="url(#shieldGrad)" />
+  
+  <!-- Inner Shield accent -->
+  <path d="M256 64 L400 118 C400 274 320 380 256 436 C192 380 112 274 112 118 Z" fill="#111827" opacity="0.6" />
+  
+  <!-- Target / Focus Rings -->
+  <circle cx="256" cy="240" r="80" stroke="url(#innerGrad)" stroke-width="20" fill="none" />
+  <circle cx="256" cy="240" r="40" stroke="#ffffff" stroke-width="16" fill="none" />
+  <circle cx="256" cy="240" r="14" fill="#ffffff" />
+  
+  <!-- Crosshairs -->
+  <line x1="256" y1="130" x2="256" y2="170" stroke="#ffffff" stroke-width="12" stroke-linecap="round" />
+  <line x1="256" y1="310" x2="256" y2="350" stroke="#ffffff" stroke-width="12" stroke-linecap="round" />
+  <line x1="146" y1="240" x2="186" y2="240" stroke="#ffffff" stroke-width="12" stroke-linecap="round" />
+  <line x1="326" y1="240" x2="366" y2="240" stroke="#ffffff" stroke-width="12" stroke-linecap="round" />
+</svg>
