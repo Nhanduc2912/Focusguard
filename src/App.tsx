@@ -4,6 +4,7 @@ import { ping, Session, SessionWithStats, getActiveSession, getHistory } from ".
 import { SessionSetup } from "./components/SessionSetup";
 import { SessionTimer } from "./components/SessionTimer";
 import { SessionSummary } from "./components/SessionSummary";
+import { Dashboard } from "./components/Dashboard";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<"setup" | "timer" | "dashboard">("setup");
@@ -178,15 +179,7 @@ export function App() {
           )}
 
           {activeTab === "dashboard" && (
-            <div className="bg-surface-card/60 backdrop-blur-md rounded-2xl border border-slate-800/80 p-12 shadow-xl flex flex-col items-center justify-center text-center">
-              <div className="w-16 h-16 rounded-2xl bg-slate-800/60 border border-slate-700/40 flex items-center justify-center text-slate-400 mb-4">
-                <History className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-semibold text-white">No Past Sessions Yet</h3>
-              <p className="text-sm text-slate-400 mt-1 max-w-sm">
-                Completed sessions and distraction statistics will appear here.
-              </p>
-            </div>
+            <Dashboard onStartNewSession={() => setActiveTab("setup")} />
           )}
         </div>
       </main>
