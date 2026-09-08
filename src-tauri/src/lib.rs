@@ -1,3 +1,5 @@
+pub mod db;
+
 #[tauri::command]
 fn ping() -> String {
     "Backend connected (Tauri v2 + Rust)".to_string()

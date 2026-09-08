@@ -5,7 +5,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 
 ## Phase 1 — MVP (desktop, local-only)
 - [x] 1.1 Scaffold Tauri + React + Tailwind project (`.agents/skills/tauri-scaffold`)
-- [ ] 1.2 SQLite schema: `sessions(id, goal, planned_minutes, started_at, ended_at)`,
+- [x] 1.2 SQLite schema: `sessions(id, goal, planned_minutes, started_at, ended_at)`,
       `distractions(id, session_id, process_name, timestamp)`,
       `blacklist(id, name, type)`
 - [ ] 1.3 Tauri commands: `start_session`, `end_session`, `get_history`,
