@@ -8,7 +8,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 - [x] 1.2 SQLite schema: `sessions(id, goal, planned_minutes, started_at, ended_at)`,
       `distractions(id, session_id, process_name, timestamp)`,
       `blacklist(id, name, type)`
-- [ ] 1.3 Tauri commands: `start_session`, `end_session`, `get_history`,
+- [x] 1.3 Tauri commands: `start_session`, `end_session`, `get_history`,
       `add_blacklist_item`, `remove_blacklist_item`
 - [ ] 1.4 Rust background poller (process/window monitor, 1–2s interval)
 - [ ] 1.5 Blacklist matching logic + unit tests

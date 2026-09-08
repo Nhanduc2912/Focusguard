@@ -8,6 +8,15 @@ export interface Session {
   endedAt?: string | null;
 }
 
+export interface SessionWithStats {
+  id: number;
+  goal: string;
+  plannedMinutes: number;
+  startedAt: string;
+  endedAt?: string | null;
+  distractionCount: number;
+}
+
 export interface Distraction {
   id: number;
   sessionId: number;
@@ -43,16 +52,33 @@ export async function endSession(): Promise<Session | null> {
 }
 
 /**
- * Get past session history
+ * Get currently active focus session, if one exists
  */
-export async function getHistory(): Promise<Session[]> {
-  return invoke<Session[]>("get_history");
+export async function getActiveSession(): Promise<Session | null> {
+  return invoke<Session | null>("get_active_session");
+}
+
+/**
+ * Get past session history with distraction statistics
+ */
+export async function getHistory(): Promise<SessionWithStats[]> {
+  return invoke<SessionWithStats[]>("get_history");
+}
+
+/**
+ * Get all current blacklist items
+ */
+export async function getBlacklist(): Promise<BlacklistItem[]> {
+  return invoke<BlacklistItem[]>("get_blacklist");
 }
 
 /**
  * Add an item to the blacklist
  */
-export async function addBlacklistItem(name: string, itemType: "app" | "domain"): Promise<BlacklistItem> {
+export async function addBlacklistItem(
+  name: string,
+  itemType: "app" | "domain",
+): Promise<BlacklistItem> {
   return invoke<BlacklistItem>("add_blacklist_item", { name, itemType });
 }
 
