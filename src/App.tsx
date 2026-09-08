@@ -1,14 +1,16 @@
 import { useState, useEffect } from "react";
 import { Shield, Sparkles, Clock, History } from "lucide-react";
-import { ping, Session, getActiveSession } from "./lib/api";
+import { ping, Session, SessionWithStats, getActiveSession, getHistory } from "./lib/api";
 import { SessionSetup } from "./components/SessionSetup";
 import { SessionTimer } from "./components/SessionTimer";
+import { SessionSummary } from "./components/SessionSummary";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<"setup" | "timer" | "dashboard">("setup");
   const [backendStatus, setBackendStatus] = useState<string>("Checking backend...");
   const [isTauriReady, setIsTauriReady] = useState<boolean>(false);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
+  const [lastEndedSession, setLastEndedSession] = useState<SessionWithStats | null>(null);
 
   useEffect(() => {
     ping()
@@ -123,6 +125,7 @@ export function App() {
             <SessionSetup
               onSessionStarted={(session) => {
                 setActiveSession(session);
+                setLastEndedSession(null);
                 setActiveTab("timer");
               }}
               onNavigateToTimer={() => setActiveTab("timer")}
@@ -130,14 +133,48 @@ export function App() {
           )}
 
           {activeTab === "timer" && (
-            <SessionTimer
-              session={activeSession}
-              onSessionEnded={() => {
-                setActiveSession(null);
-                setActiveTab("dashboard");
-              }}
-              onNavigateToSetup={() => setActiveTab("setup")}
-            />
+            activeSession ? (
+              <SessionTimer
+                session={activeSession}
+                onSessionEnded={async (ended) => {
+                  setActiveSession(null);
+                  try {
+                    const history = await getHistory();
+                    const stats = history.find((h) => h.id === ended.id);
+                    if (stats) {
+                      setLastEndedSession(stats);
+                    } else {
+                      setLastEndedSession({
+                        ...ended,
+                        distractionCount: 0,
+                      });
+                    }
+                  } catch {
+                    setLastEndedSession({
+                      ...ended,
+                      distractionCount: 0,
+                    });
+                  }
+                }}
+                onNavigateToSetup={() => setActiveTab("setup")}
+              />
+            ) : lastEndedSession ? (
+              <SessionSummary
+                session={lastEndedSession}
+                onStartNewSession={() => {
+                  setLastEndedSession(null);
+                  setActiveTab("setup");
+                }}
+                onViewHistory={() => {
+                  setActiveTab("dashboard");
+                }}
+              />
+            ) : (
+              <SessionTimer
+                session={null}
+                onNavigateToSetup={() => setActiveTab("setup")}
+              />
+            )
           )}
 
           {activeTab === "dashboard" && (

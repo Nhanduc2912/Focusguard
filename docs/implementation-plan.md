@@ -15,7 +15,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 - [x] 1.6 Overlay window (always-on-top, full-screen) triggered on distraction
 - [x] 1.7 Frontend: SessionSetup screen (goal, duration, blacklist picker)
 - [x] 1.8 Frontend: SessionTimer screen (live countdown, live distraction count)
-- [ ] 1.9 Frontend: session summary on end (planned vs actual, distractions)
+- [x] 1.9 Frontend: session summary on end (planned vs actual, distractions)
 - [ ] 1.10 Frontend: Dashboard listing past sessions
 - [ ] 1.11 End-to-end self-verification per skill, using Notepad/TextEdit as
       the test blacklist target
