@@ -58,8 +58,13 @@ async fn test_real_db_poller_and_distraction_logging() {
 
     // The poller runs every 500ms, detecting "notepad.exe"
     let poller_handle = tokio::spawn(async move {
-        process_monitor::start_polling_with(monitor_state, 500, || Some("notepad.exe".to_string()))
-            .await;
+        process_monitor::run_polling_loop(
+            monitor_state,
+            500,
+            || Some("notepad.exe".to_string()),
+            |_payload| {},
+        )
+        .await;
     });
 
     // Wait 3.2 seconds for multiple ticks (each 500ms)
@@ -125,6 +130,7 @@ async fn test_real_db_poller_and_distraction_logging() {
         &app_state,
         &mut debouncer,
         || Some("notepad.exe".to_string()),
+        |_payload| {},
     )
     .await;
     assert!(

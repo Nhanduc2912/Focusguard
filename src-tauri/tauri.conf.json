@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "FocusGuard",
         "width": 1024,
         "height": 740,
@@ -19,6 +20,17 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false
+      },
+      {
+        "label": "overlay",
+        "title": "FocusGuard Overlay",
+        "url": "index.html?window=overlay",
+        "fullscreen": true,
+        "alwaysOnTop": true,
+        "transparent": true,
+        "decorations": false,
+        "visible": false,
+        "skipTaskbar": true
       }
     ],
     "security": {

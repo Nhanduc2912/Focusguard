@@ -30,6 +30,12 @@ export interface BlacklistItem {
   itemType: "app" | "domain";
 }
 
+export interface DistractionEventPayload {
+  sessionId: number;
+  processName: string;
+  sessionGoal: string;
+}
+
 /**
  * Ping backend to verify Tauri IPC communication
  */
@@ -87,4 +93,11 @@ export async function addBlacklistItem(
  */
 export async function removeBlacklistItem(id: number): Promise<boolean> {
   return invoke<boolean>("remove_blacklist_item", { id });
+}
+
+/**
+ * Hide the distraction warning overlay window
+ */
+export async function hideOverlay(): Promise<void> {
+  return invoke<void>("hide_overlay");
 }

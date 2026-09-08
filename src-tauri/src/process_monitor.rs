@@ -117,6 +117,15 @@ pub fn get_foreground_process_name() -> Option<String> {
     }
 }
 
+/// Payload emitted via Tauri event "distraction-detected"
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DistractionEventPayload {
+    pub session_id: i64,
+    pub process_name: String,
+    pub session_goal: String,
+}
+
 /// Fallback for non-Windows targets
 #[cfg(not(windows))]
 pub fn get_foreground_process_name() -> Option<String> {
@@ -124,14 +133,16 @@ pub fn get_foreground_process_name() -> Option<String> {
 }
 
 /// Executes a single polling cycle: queries active session, checks foreground process,
-/// applies debouncing, and logs distractions to the database.
-pub async fn poll_cycle<F>(
+/// applies debouncing, logs distractions to the database, and invokes the distraction callback.
+pub async fn poll_cycle<F, E>(
     app_state: &AppState,
     debouncer: &mut DistractionDebouncer,
     mut get_fg: F,
+    mut on_distraction: E,
 ) -> Option<db::DistractionRecord>
 where
     F: FnMut() -> Option<String>,
+    E: FnMut(&DistractionEventPayload),
 {
     // Query active session and blacklist from database
     let active_info = {
@@ -160,12 +171,12 @@ where
             }
         };
 
-        (active_session.id, blacklist)
+        (active_session.id, active_session.goal, blacklist)
     };
 
     // Determine currently active foreground process
     if let Some(fg_process) = get_fg() {
-        let (session_id, blacklist) = active_info;
+        let (session_id, session_goal, blacklist) = active_info;
         if matches_blacklist(&fg_process, &blacklist)
             && debouncer.should_log(&fg_process, Instant::now())
         {
@@ -183,6 +194,14 @@ where
                         "[process_monitor] Logged distraction: {} (session_id: {}, timestamp: {})",
                         record.process_name, record.session_id, record.timestamp
                     );
+
+                    let payload = DistractionEventPayload {
+                        session_id,
+                        process_name: fg_process.clone(),
+                        session_goal,
+                    };
+                    on_distraction(&payload);
+
                     return Some(record);
                 }
                 Err(e) => {
@@ -194,23 +213,51 @@ where
     None
 }
 
-/// Background polling loop running on a tokio interval with default OS foreground process resolver
-pub async fn start_polling(app_state: AppState, interval_ms: u64) {
-    start_polling_with(app_state, interval_ms, get_foreground_process_name).await;
-}
-
-/// Background polling loop running on a tokio interval with custom process resolver (for tests & extension)
-pub async fn start_polling_with<F>(app_state: AppState, interval_ms: u64, mut get_fg: F)
-where
+/// Generic polling loop supporting custom process resolvers and distraction callbacks
+pub async fn run_polling_loop<F, E>(
+    app_state: AppState,
+    interval_ms: u64,
+    mut get_fg: F,
+    mut on_distraction: E,
+) where
     F: FnMut() -> Option<String> + Send + 'static,
+    E: FnMut(&DistractionEventPayload) + Send + 'static,
 {
     let mut interval = tokio::time::interval(Duration::from_millis(interval_ms));
     let mut debouncer = DistractionDebouncer::new(Duration::from_secs(5));
 
     loop {
         interval.tick().await;
-        let _ = poll_cycle(&app_state, &mut debouncer, &mut get_fg).await;
+        let _ = poll_cycle(&app_state, &mut debouncer, &mut get_fg, &mut on_distraction).await;
     }
+}
+
+/// Background polling loop running on a tokio interval with default OS foreground process resolver
+/// and Tauri AppHandle integration (emits "distraction-detected" and shows overlay window).
+pub async fn start_polling(app_handle: tauri::AppHandle, app_state: AppState, interval_ms: u64) {
+    start_polling_with(app_handle, app_state, interval_ms, get_foreground_process_name).await;
+}
+
+/// Background polling loop with custom process resolver and Tauri AppHandle integration
+pub async fn start_polling_with<F>(
+    app_handle: tauri::AppHandle,
+    app_state: AppState,
+    interval_ms: u64,
+    get_fg: F,
+) where
+    F: FnMut() -> Option<String> + Send + 'static,
+{
+    use tauri::{Emitter, Manager};
+    run_polling_loop(app_state, interval_ms, get_fg, move |payload| {
+        let _ = app_handle.emit("distraction-detected", payload);
+        if let Some(overlay) = app_handle.get_webview_window("overlay") {
+            let _ = overlay.show();
+            let _ = overlay.unminimize();
+            let _ = overlay.set_focus();
+            let _ = overlay.set_always_on_top(true);
+        }
+    })
+    .await;
 }
 
 #[cfg(test)]
@@ -270,5 +317,79 @@ pub mod tests {
         assert!(matches_blacklist("Notepad.exe", &blacklist));
         assert!(!matches_blacklist("code.exe", &blacklist));
         assert!(!matches_blacklist("facebook.com", &blacklist)); // Domain type not matched as process name
+    }
+
+    #[tokio::test]
+    async fn test_poll_cycle_distraction_event_and_debounce() {
+        use rusqlite::Connection;
+
+        let conn = Connection::open_in_memory().unwrap();
+        db::init_db(&conn).unwrap();
+        db::add_blacklist_item(&conn, "notepad.exe", "app").unwrap();
+        let session = db::create_session(&conn, "Study Rust Concurrency", 60).unwrap();
+
+        let app_state = AppState::new(conn);
+        let mut debouncer = DistractionDebouncer::new(Duration::from_secs(5));
+
+        // 1. First distraction: should log and trigger event callback
+        let mut emitted_events = Vec::new();
+        let log_res = poll_cycle(
+            &app_state,
+            &mut debouncer,
+            || Some("notepad.exe".to_string()),
+            |payload| emitted_events.push(payload.clone()),
+        )
+        .await;
+
+        assert!(log_res.is_some());
+        assert_eq!(emitted_events.len(), 1);
+        assert_eq!(emitted_events[0].process_name, "notepad.exe");
+        assert_eq!(emitted_events[0].session_goal, "Study Rust Concurrency");
+        assert_eq!(emitted_events[0].session_id, session.id);
+
+        // 2. Immediate second distraction (within 5s): should be debounced
+        let log_res2 = poll_cycle(
+            &app_state,
+            &mut debouncer,
+            || Some("notepad.exe".to_string()),
+            |payload| emitted_events.push(payload.clone()),
+        )
+        .await;
+
+        assert!(log_res2.is_none());
+        assert_eq!(emitted_events.len(), 1); // Still 1, no duplicate event
+
+        // 3. Different blacklisted app (e.g. discord.exe): should trigger immediately
+        {
+            let conn = app_state.db.lock().unwrap();
+            db::add_blacklist_item(&conn, "discord.exe", "app").unwrap();
+        }
+        let log_res3 = poll_cycle(
+            &app_state,
+            &mut debouncer,
+            || Some("discord.exe".to_string()),
+            |payload| emitted_events.push(payload.clone()),
+        )
+        .await;
+
+        assert!(log_res3.is_some());
+        assert_eq!(emitted_events.len(), 2);
+        assert_eq!(emitted_events[1].process_name, "discord.exe");
+
+        // 4. Session ended: should not trigger
+        {
+            let conn = app_state.db.lock().unwrap();
+            db::end_session(&conn, session.id).unwrap();
+        }
+        let log_res4 = poll_cycle(
+            &app_state,
+            &mut debouncer,
+            || Some("notepad.exe".to_string()),
+            |payload| emitted_events.push(payload.clone()),
+        )
+        .await;
+
+        assert!(log_res4.is_none());
+        assert_eq!(emitted_events.len(), 2); // No new events
     }
 }

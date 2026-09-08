@@ -103,6 +103,16 @@ pub fn remove_blacklist_item(state: State<'_, AppState>, id: i64) -> Result<bool
     db::remove_blacklist_item(&conn, id).map_err(|e| e.to_string())
 }
 
+/// Tauri command: Hide the distraction warning overlay window
+#[tauri::command]
+pub fn hide_overlay(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        overlay.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;

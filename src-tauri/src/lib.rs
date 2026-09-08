@@ -33,8 +33,9 @@ pub fn run() {
 
             // Spawn background process monitor loop (polls every 1500ms when a session is active)
             let monitor_state = app_state.clone();
+            let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                process_monitor::start_polling(monitor_state, 1500).await;
+                process_monitor::start_polling(app_handle, monitor_state, 1500).await;
             });
 
             app.manage(app_state);
@@ -49,6 +50,7 @@ pub fn run() {
             commands::get_blacklist,
             commands::add_blacklist_item,
             commands::remove_blacklist_item,
+            commands::hide_overlay,
         ])
         .run(tauri::generate_context!())
         .expect("error while running FocusGuard application");
