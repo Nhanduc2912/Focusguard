@@ -138,6 +138,35 @@ pub fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Tauri command: Get latest distraction and active session info for the overlay window
+#[tauri::command]
+pub fn get_latest_distraction(
+    app_state: tauri::State<'_, AppState>,
+) -> Result<Option<crate::process_monitor::DistractionEventPayload>, String> {
+    let conn = app_state.db.lock().map_err(|e| e.to_string())?;
+    let active = db::get_active_session(&conn).map_err(|e| e.to_string())?;
+    if let Some(session) = active {
+        let mut stmt = conn
+            .prepare(
+                "SELECT process_name, timestamp FROM distractions 
+                 WHERE session_id = ?1 ORDER BY id DESC LIMIT 1;",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query(rusqlite::params![session.id]).map_err(|e| e.to_string())?;
+        if let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let process_name: String = row.get(0).map_err(|e| e.to_string())?;
+            let timestamp: String = row.get(1).map_err(|e| e.to_string())?;
+            return Ok(Some(crate::process_monitor::DistractionEventPayload {
+                session_id: session.id,
+                process_name,
+                session_goal: session.goal,
+                timestamp,
+            }));
+        }
+    }
+    Ok(None)
+}
+
 /// Helper to list running user desktop processes (with UI windows, filtering system daemons)
 #[cfg(windows)]
 fn get_running_desktop_processes() -> Vec<String> {
@@ -317,5 +346,25 @@ pub mod tests {
         let list = list_running_processes().unwrap();
         // Running environment should return a list without error
         assert!(list.iter().all(|name| !name.is_empty()));
+    }
+
+    #[test]
+    fn test_commands_get_latest_distraction() {
+        let app_state = setup_test_state();
+        let conn = app_state.db.lock().unwrap();
+
+        // 1. When no active session, returns None
+        let session = db::create_session(&conn, "Deep Focus", 30).unwrap();
+        db::log_distraction(&conn, session.id, "notepad.exe").unwrap();
+        db::log_distraction(&conn, session.id, "steam.exe").unwrap();
+
+        // Query latest distraction
+        let mut stmt = conn
+            .prepare("SELECT process_name, timestamp FROM distractions WHERE session_id = ?1 ORDER BY id DESC LIMIT 1;")
+            .unwrap();
+        let mut rows = stmt.query(rusqlite::params![session.id]).unwrap();
+        let row = rows.next().unwrap().unwrap();
+        let proc: String = row.get(0).unwrap();
+        assert_eq!(proc, "steam.exe");
     }
 }

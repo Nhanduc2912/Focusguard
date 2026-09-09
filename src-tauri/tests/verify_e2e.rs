@@ -273,3 +273,59 @@ async fn test_steam_blacklist_and_detection_with_process_aliases() {
     assert_eq!(distractions[0].process_name, "steamwebhelper.exe");
 }
 
+#[tokio::test]
+async fn test_consecutive_notepad_then_steam_triggers_and_latest_distraction() {
+    let conn = Connection::open_in_memory().unwrap();
+    db::init_db(&conn).unwrap();
+
+    let _ = db::add_blacklist_item(&conn, "notepad.exe", "app");
+    let _ = db::add_blacklist_item(&conn, "steam.exe", "app");
+
+    let session = db::create_session(&conn, "Focus Sprint", 45).unwrap();
+    let app_state = AppState::new(conn);
+    let mut debouncer = DistractionDebouncer::new(Duration::from_millis(50));
+
+    let events: Arc<std::sync::Mutex<Vec<DistractionEventPayload>>> =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+
+    // 1. First trigger: notepad.exe
+    let events_c1 = events.clone();
+    let res1 = process_monitor::poll_cycle(
+        &app_state,
+        &mut debouncer,
+        || Some("notepad.exe".to_string()),
+        move |p| events_c1.lock().unwrap().push(p.clone()),
+    )
+    .await;
+    assert!(res1.is_some());
+
+    // Debounce wait
+    tokio::time::sleep(Duration::from_millis(60)).await;
+
+    // 2. Second trigger: steam.exe
+    let events_c2 = events.clone();
+    let res2 = process_monitor::poll_cycle(
+        &app_state,
+        &mut debouncer,
+        || Some("steam.exe".to_string()),
+        move |p| events_c2.lock().unwrap().push(p.clone()),
+    )
+    .await;
+    assert!(res2.is_some());
+
+    let guard = events.lock().unwrap();
+    assert_eq!(guard.len(), 2);
+    assert_eq!(guard[0].process_name, "notepad.exe");
+    assert_eq!(guard[1].process_name, "steam.exe");
+
+    // 3. Verify latest distraction in SQLite is steam.exe
+    let conn_guard = app_state.db.lock().unwrap();
+    let mut stmt = conn_guard
+        .prepare("SELECT process_name, timestamp FROM distractions WHERE session_id = ?1 ORDER BY id DESC LIMIT 1;")
+        .unwrap();
+    let mut rows = stmt.query(rusqlite::params![session.id]).unwrap();
+    let row = rows.next().unwrap().unwrap();
+    let latest_proc: String = row.get(0).unwrap();
+    assert_eq!(latest_proc, "steam.exe");
+}
+

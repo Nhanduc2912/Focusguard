@@ -1,6 +1,9 @@
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OverlayWarning } from "./OverlayWarning";
+
+type EventHandler = (event: { payload: any }) => void;
+const listeners: Record<string, EventHandler[]> = {};
 
 // Mock Tauri invoke & event
 vi.mock("@tauri-apps/api/core", () => ({
@@ -8,10 +11,31 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
+  listen: vi.fn().mockImplementation((eventName: string, handler: EventHandler) => {
+    if (!listeners[eventName]) {
+      listeners[eventName] = [];
+    }
+    listeners[eventName].push(handler);
+    return Promise.resolve(() => {
+      const idx = listeners[eventName]?.indexOf(handler);
+      if (idx !== undefined && idx >= 0) {
+        listeners[eventName].splice(idx, 1);
+      }
+    });
+  }),
 }));
 
+function emitTauriEvent(eventName: string, payload: any) {
+  const handlers = listeners[eventName] || [];
+  handlers.forEach((fn) => fn({ payload }));
+}
+
 describe("OverlayWarning Component", () => {
+  beforeEach(() => {
+    for (const key of Object.keys(listeners)) {
+      delete listeners[key];
+    }
+  });
   it("renders distraction warning title and process name", () => {
     render(
       <OverlayWarning
@@ -84,5 +108,43 @@ describe("OverlayWarning Component", () => {
     fireEvent(window, new Event("focus"));
     expect(overlayEl?.className).toContain("opacity-100");
     expect(screen.getByText("Bạn đang xao nhãng!")).toBeDefined();
+  });
+
+  it("test_overlay_updates_payload_across_multiple_distinct_triggers", async () => {
+    render(<OverlayWarning />);
+
+    // Trigger 1: notepad.exe
+    act(() => {
+      emitTauriEvent("distraction-detected", {
+        sessionId: 1,
+        processName: "notepad.exe",
+        sessionGoal: "Mục tiêu 1: Học thuật toán",
+        timestamp: "2026-09-09T08:00:00.000Z",
+      });
+    });
+
+    expect(document.getElementById("overlay-process-name")?.textContent).toBe("notepad.exe");
+    expect(document.getElementById("overlay-session-goal")?.textContent).toBe("Mục tiêu 1: Học thuật toán");
+
+    // Trigger 2: steam.exe with different goal and timestamp
+    act(() => {
+      emitTauriEvent("distraction-detected", {
+        sessionId: 2,
+        processName: "steam.exe",
+        sessionGoal: "Mục tiêu 2: Làm dự án FocusGuard",
+        timestamp: "2026-09-09T10:15:00.000Z",
+      });
+    });
+
+    // Assert UI shows the 2nd process and goal, without retaining 1st trigger's stale values
+    expect(document.getElementById("overlay-process-name")?.textContent).toBe("steam.exe");
+    expect(document.getElementById("overlay-session-goal")?.textContent).toBe("Mục tiêu 2: Làm dự án FocusGuard");
+    expect(screen.queryByText("notepad.exe")).toBeNull();
+    expect(screen.queryByText("Mục tiêu 1: Học thuật toán")).toBeNull();
+
+    // Verify detection time reflects updated timestamp
+    const detectedTimeEl = document.getElementById("overlay-detected-time");
+    expect(detectedTimeEl).not.toBeNull();
+    expect(detectedTimeEl?.textContent).toContain("Phát hiện lúc:");
   });
 });

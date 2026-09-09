@@ -1,21 +1,73 @@
 import { useState, useEffect, useCallback } from "react";
-import { AlertOctagon, ArrowLeft, Target, ShieldAlert } from "lucide-react";
-import { hideOverlay, DistractionEventPayload } from "../lib/api";
+import { AlertOctagon, ArrowLeft, Target, ShieldAlert, Clock } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
+import { hideOverlay, getLatestDistraction, DistractionEventPayload } from "../lib/api";
 
 interface OverlayWarningProps {
   initialProcess?: string;
   initialGoal?: string;
+  initialTimestamp?: string;
   onDismiss?: () => void;
 }
 
+function formatDetectedTime(isoString?: string): string {
+  if (!isoString) {
+    const d = new Date();
+    return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`;
+  }
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) {
+      const now = new Date();
+      return `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+    }
+    return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`;
+  } catch {
+    const now = new Date();
+    return `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+  }
+}
+
 export function OverlayWarning({
-  initialProcess = "notepad.exe",
-  initialGoal = "Tập trung hoàn thành bài học",
+  initialProcess,
+  initialGoal,
+  initialTimestamp,
   onDismiss,
 }: OverlayWarningProps) {
-  const [processName, setProcessName] = useState<string>(initialProcess);
-  const [sessionGoal, setSessionGoal] = useState<string>(initialGoal);
+  const [processName, setProcessName] = useState<string>(initialProcess || "");
+  const [sessionGoal, setSessionGoal] = useState<string>(initialGoal || "");
+  const [detectedTime, setDetectedTime] = useState<string>(
+    initialTimestamp ? formatDetectedTime(initialTimestamp) : ""
+  );
   const [isClosing, setIsClosing] = useState<boolean>(false);
+
+  // Update component state from a fresh payload
+  const updateFromPayload = useCallback((payload: DistractionEventPayload) => {
+    if (payload.processName) {
+      setProcessName(payload.processName);
+    }
+    if (payload.sessionGoal) {
+      setSessionGoal(payload.sessionGoal);
+    }
+    if (payload.timestamp) {
+      setDetectedTime(formatDetectedTime(payload.timestamp));
+    } else {
+      setDetectedTime(formatDetectedTime());
+    }
+    setIsClosing(false);
+  }, []);
+
+  // Query backend SQLite to fetch latest distraction and active session info
+  const refreshLatest = useCallback(async () => {
+    try {
+      const latest = await getLatestDistraction();
+      if (latest) {
+        updateFromPayload(latest);
+      }
+    } catch {
+      // In web preview mode outside Tauri
+    }
+  }, [updateFromPayload]);
 
   // Handle return to focus action
   const handleReturnToFocus = useCallback(async () => {
@@ -26,57 +78,75 @@ export function OverlayWarning({
     try {
       await hideOverlay();
     } catch {
-      // In web preview mode or when Tauri window is not available
       console.info("Overlay hidden in web preview mode");
     } finally {
-      // Critical fix: ensure isClosing is reset so subsequent triggers render immediately
       setIsClosing(false);
     }
   }, [onDismiss]);
 
-  // Listen for distraction-detected and focus events
+  // Listen for distraction-detected and window focus/wakeup events
   useEffect(() => {
+    let isMounted = true;
     let unlistenDistraction: (() => void) | undefined;
     let unlistenFocus: (() => void) | undefined;
 
-    // Reset closing state when window gains focus or visibility
+    // Fetch initial fresh data from backend immediately
+    refreshLatest();
+
+    // Reset closing state and refresh state whenever window gains focus or visibility
     const handleFocus = () => {
       setIsClosing(false);
+      refreshLatest();
     };
     window.addEventListener("focus", handleFocus);
     window.addEventListener("pageshow", handleFocus);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         setIsClosing(false);
+        refreshLatest();
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // Dynamically import Tauri event listener if in Tauri runtime
-    import("@tauri-apps/api/event")
-      .then(async ({ listen }) => {
-        unlistenDistraction = await listen<DistractionEventPayload>(
-          "distraction-detected",
-          (event) => {
-            if (event.payload) {
-              setProcessName(event.payload.processName);
-              setSessionGoal(event.payload.sessionGoal);
-            }
-            setIsClosing(false);
-          }
-        );
-
-        unlistenFocus = await listen("tauri://focus", () => {
-          setIsClosing(false);
-        });
+    // Register Tauri event listeners
+    listen<DistractionEventPayload>("distraction-detected", (event) => {
+      if (!isMounted) return;
+      if (event.payload) {
+        updateFromPayload(event.payload);
+      }
+    })
+      .then((unlisten) => {
+        unlistenDistraction = unlisten;
       })
       .catch((err) => {
         console.debug("Tauri event listener not available in preview:", err);
       });
 
+    // Web preview & automated browser test fallback
+    const handleCustomEvent = (e: Event) => {
+      if (!isMounted) return;
+      const customEvent = e as CustomEvent<DistractionEventPayload>;
+      if (customEvent.detail) {
+        updateFromPayload(customEvent.detail);
+      }
+    };
+    window.addEventListener("distraction-detected", handleCustomEvent);
+
+    listen("tauri://focus", () => {
+      if (!isMounted) return;
+      setIsClosing(false);
+      refreshLatest();
+    })
+      .then((unlisten) => {
+        unlistenFocus = unlisten;
+      })
+      .catch(() => {});
+
     return () => {
+      isMounted = false;
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("pageshow", handleFocus);
+      window.removeEventListener("distraction-detected", handleCustomEvent);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (unlistenDistraction) {
         unlistenDistraction();
@@ -85,7 +155,7 @@ export function OverlayWarning({
         unlistenFocus();
       }
     };
-  }, []);
+  }, [refreshLatest, updateFromPayload]);
 
   // Keyboard shortcut: Esc or Enter to dismiss
   useEffect(() => {
@@ -136,10 +206,18 @@ export function OverlayWarning({
           </p>
         </div>
 
-        {/* Blocked process badge */}
-        <div className="px-5 py-2.5 rounded-2xl bg-rose-950/40 border border-rose-500/30 text-rose-300 font-mono font-bold text-lg flex items-center gap-2.5 shadow-inner">
-          <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-ping" />
-          <span id="overlay-process-name">{processName}</span>
+        {/* Blocked process badge & detection time */}
+        <div className="flex flex-col items-center gap-2">
+          <div className="px-5 py-2.5 rounded-2xl bg-rose-950/40 border border-rose-500/30 text-rose-300 font-mono font-bold text-lg flex items-center gap-2.5 shadow-inner">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-ping" />
+            <span id="overlay-process-name">{processName || "notepad.exe"}</span>
+          </div>
+          {detectedTime && (
+            <div id="overlay-detected-time" className="inline-flex items-center gap-1.5 text-xs text-rose-400/90 font-mono">
+              <Clock className="w-3.5 h-3.5" />
+              <span>Phát hiện lúc: <strong>{detectedTime}</strong></span>
+            </div>
+          )}
         </div>
 
         {/* Goal reminder card */}
@@ -148,7 +226,7 @@ export function OverlayWarning({
             <Target className="w-3.5 h-3.5" /> Mục tiêu phiên hiện tại
           </div>
           <p id="overlay-session-goal" className="text-slate-200 font-medium text-base line-clamp-2">
-            {sessionGoal}
+            {sessionGoal || "Tập trung hoàn thành mục tiêu"}
           </p>
         </div>
 

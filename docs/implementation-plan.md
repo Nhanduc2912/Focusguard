@@ -24,6 +24,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 ## Phase 1.5 — Critical bug fixes
 - [x] 1.5.1 Fix blank overlay window on repeated distraction triggers (fix(overlay): resolve blank overlay on repeated distraction trigger)
 - [x] 1.5.2 Auto-end session, focus main window, and play sound when countdown reaches zero (fix(timer): auto-end session and notify when countdown reaches zero)
+- [x] 1.5.3 Fix stale overlay payload shown across repeated distraction triggers (fix(overlay): resolve stale payload shown across repeated distraction triggers)
 
 ## Phase 1.6 — UX Improvements
 - [x] 1.6.1 Detailed distraction breakdown per session on Dashboard (feat(dashboard): show detailed distraction breakdown per session)

@@ -34,6 +34,7 @@ export interface DistractionEventPayload {
   sessionId: number;
   processName: string;
   sessionGoal: string;
+  timestamp?: string;
 }
 
 /**
@@ -121,6 +122,13 @@ export async function showMainWindow(): Promise<void> {
  */
 export async function listRunningProcesses(): Promise<string[]> {
   return invoke<string[]>("list_running_processes");
+}
+
+/**
+ * Fetch the latest distraction and current session info from backend
+ */
+export async function getLatestDistraction(): Promise<DistractionEventPayload | null> {
+  return invoke<DistractionEventPayload | null>("get_latest_distraction");
 }
 
 

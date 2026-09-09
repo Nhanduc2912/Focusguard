@@ -132,6 +132,7 @@ pub struct DistractionEventPayload {
     pub session_id: i64,
     pub process_name: String,
     pub session_goal: String,
+    pub timestamp: String,
 }
 
 /// Fallback for non-Windows targets
@@ -198,15 +199,11 @@ where
 
             match db::log_distraction(&conn, session_id, &fg_process) {
                 Ok(record) => {
-                    println!(
-                        "[process_monitor] Logged distraction: {} (session_id: {}, timestamp: {})",
-                        record.process_name, record.session_id, record.timestamp
-                    );
-
                     let payload = DistractionEventPayload {
                         session_id,
                         process_name: fg_process.clone(),
                         session_goal,
+                        timestamp: record.timestamp.clone(),
                     };
                     on_distraction(&payload);
 
@@ -265,6 +262,18 @@ pub async fn start_polling_with<F>(
             let _ = overlay.emit("distraction-detected", payload);
         }
         let _ = app_handle.emit("distraction-detected", payload);
+
+        // On Windows, WebView2 might take a short moment to unsuspend from hidden state.
+        // Re-emit shortly after window show to ensure waking JavaScript event loop catches the event.
+        let overlay_handle = app_handle.clone();
+        let payload_delayed = payload.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            if let Some(overlay) = overlay_handle.get_webview_window("overlay") {
+                let _ = overlay.emit("distraction-detected", &payload_delayed);
+            }
+            let _ = overlay_handle.emit("distraction-detected", &payload_delayed);
+        });
     })
     .await;
 }
