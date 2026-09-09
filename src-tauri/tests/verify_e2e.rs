@@ -329,3 +329,92 @@ async fn test_consecutive_notepad_then_steam_triggers_and_latest_distraction() {
     assert_eq!(latest_proc, "steam.exe");
 }
 
+#[tokio::test]
+async fn test_new_session_isolation_and_no_fallback_to_old_session() {
+    let conn = Connection::open_in_memory().unwrap();
+    db::init_db(&conn).unwrap();
+
+    let _ = db::add_blacklist_item(&conn, "notepad.exe", "app");
+    let _ = db::add_blacklist_item(&conn, "steam.exe", "app");
+
+    // --- SESSION 1 ---
+    let s1 = db::create_session(&conn, "Session 1 Goal", 30).unwrap();
+    db::log_distraction(&conn, s1.id, "notepad.exe").unwrap();
+    db::end_session(&conn, s1.id).unwrap();
+
+    // Verify s1 ended
+    let active_none = db::get_active_session(&conn).unwrap();
+    assert!(active_none.is_none());
+
+    // --- SESSION 2 (BRAND NEW) ---
+    let s2_goal = "Session 2 Goal (Brand New Focus)";
+    let s2 = db::create_session(&conn, s2_goal, 45).unwrap();
+    let active_s2 = db::get_active_session(&conn).unwrap();
+    assert!(active_s2.is_some());
+    assert_eq!(active_s2.as_ref().unwrap().id, s2.id);
+    assert_eq!(active_s2.as_ref().unwrap().goal, s2_goal);
+
+    let app_state = AppState::new(conn);
+    let mut debouncer = DistractionDebouncer::new(Duration::from_millis(50));
+
+    // STEP A: Open non-blacklisted app (code.exe) -> Ensure 0 distractions in Session 2
+    let res_clean = process_monitor::poll_cycle(
+        &app_state,
+        &mut debouncer,
+        || Some("code.exe".to_string()),
+        |_| {},
+    )
+    .await;
+    assert!(res_clean.is_none(), "Clean app must produce no distraction");
+
+    // Verify Session 2 has NO distractions in SQLite
+    {
+        let conn_guard = app_state.db.lock().unwrap();
+        let s2_distractions = db::get_session_distractions(&conn_guard, s2.id).unwrap();
+        assert_eq!(s2_distractions.len(), 0, "Session 2 must have 0 distractions initially");
+
+        // Verify query for latest distraction of active session returns NONE (NO FALLBACK TO S1)
+        let mut stmt = conn_guard
+            .prepare("SELECT process_name, timestamp FROM distractions WHERE session_id = ?1 ORDER BY id DESC LIMIT 1;")
+            .unwrap();
+        let mut rows = stmt.query(rusqlite::params![s2.id]).unwrap();
+        assert!(rows.next().unwrap().is_none(), "Must NOT return distraction from session 1");
+    }
+
+    // STEP B: Open blacklisted app (steam.exe) -> Produces distraction belonging ONLY to Session 2
+    let events: Arc<std::sync::Mutex<Vec<DistractionEventPayload>>> =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+    let events_c = events.clone();
+
+    let res_distract = process_monitor::poll_cycle(
+        &app_state,
+        &mut debouncer,
+        || Some("steam.exe".to_string()),
+        move |p| events_c.lock().unwrap().push(p.clone()),
+    )
+    .await;
+    assert!(res_distract.is_some(), "Blacklisted app must produce distraction");
+    let rec = res_distract.unwrap();
+    assert_eq!(rec.session_id, s2.id);
+    assert_eq!(rec.process_name, "steam.exe");
+
+    // Verify emitted event payload has Session 2 goal and Session 2 ID
+    let guard = events.lock().unwrap();
+    assert_eq!(guard.len(), 1);
+    assert_eq!(guard[0].session_id, s2.id);
+    assert_eq!(guard[0].process_name, "steam.exe");
+    assert_eq!(guard[0].session_goal, s2_goal);
+    assert!(!guard[0].timestamp.is_empty());
+
+    // Verify Session 2 in SQLite now has exactly 1 distraction (steam.exe), S1 remains isolated
+    let conn_guard = app_state.db.lock().unwrap();
+    let s2_distractions_after = db::get_session_distractions(&conn_guard, s2.id).unwrap();
+    assert_eq!(s2_distractions_after.len(), 1);
+    assert_eq!(s2_distractions_after[0].process_name, "steam.exe");
+
+    let s1_distractions = db::get_session_distractions(&conn_guard, s1.id).unwrap();
+    assert_eq!(s1_distractions.len(), 1);
+    assert_eq!(s1_distractions[0].process_name, "notepad.exe");
+}
+
+

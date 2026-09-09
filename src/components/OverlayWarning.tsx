@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { AlertOctagon, ArrowLeft, Target, ShieldAlert, Clock } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
-import { hideOverlay, getLatestDistraction, DistractionEventPayload } from "../lib/api";
+import { hideOverlay, getLatestDistraction, getActiveSession, DistractionEventPayload } from "../lib/api";
 
 interface OverlayWarningProps {
   initialProcess?: string;
@@ -13,18 +13,20 @@ interface OverlayWarningProps {
 function formatDetectedTime(isoString?: string): string {
   if (!isoString) {
     const d = new Date();
-    return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`;
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   }
   try {
-    const d = new Date(isoString);
+    // Ensure ISO string from SQLite (YYYY-MM-DDTHH:MM:SSZ) is properly parsed as UTC
+    const dateStr = isoString.endsWith("Z") || isoString.includes("+") ? isoString : `${isoString}Z`;
+    const d = new Date(dateStr);
     if (isNaN(d.getTime())) {
       const now = new Date();
-      return `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+      return now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
     }
-    return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}:${d.getSeconds().toString().padStart(2, "0")}`;
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   } catch {
     const now = new Date();
-    return `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+    return now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   }
 }
 
@@ -63,6 +65,15 @@ export function OverlayWarning({
       const latest = await getLatestDistraction();
       if (latest) {
         updateFromPayload(latest);
+      } else {
+        // If current session has no distraction yet, reset stale distraction process/time
+        // while maintaining the current session's goal
+        const active = await getActiveSession();
+        if (active) {
+          setSessionGoal(active.goal);
+        }
+        setProcessName("");
+        setDetectedTime("");
       }
     } catch {
       // In web preview mode outside Tauri
@@ -210,7 +221,7 @@ export function OverlayWarning({
         <div className="flex flex-col items-center gap-2">
           <div className="px-5 py-2.5 rounded-2xl bg-rose-950/40 border border-rose-500/30 text-rose-300 font-mono font-bold text-lg flex items-center gap-2.5 shadow-inner">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-ping" />
-            <span id="overlay-process-name">{processName || "notepad.exe"}</span>
+            <span id="overlay-process-name">{processName || "Ứng dụng bị chặn"}</span>
           </div>
           {detectedTime && (
             <div id="overlay-detected-time" className="inline-flex items-center gap-1.5 text-xs text-rose-400/90 font-mono">
