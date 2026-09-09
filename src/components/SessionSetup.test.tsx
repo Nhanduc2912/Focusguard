@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SessionSetup } from "./SessionSetup";
 import * as api from "../lib/api";
@@ -10,6 +10,7 @@ vi.mock("../lib/api", () => ({
   addBlacklistItem: vi.fn(),
   removeBlacklistItem: vi.fn(),
   startSession: vi.fn(),
+  listRunningProcesses: vi.fn(),
 }));
 
 describe("SessionSetup Component", () => {
@@ -19,6 +20,11 @@ describe("SessionSetup Component", () => {
     vi.mocked(api.getBlacklist).mockResolvedValue([
       { id: 1, name: "facebook.com", itemType: "domain" },
       { id: 2, name: "Steam.exe", itemType: "app" },
+    ]);
+    vi.mocked(api.listRunningProcesses).mockResolvedValue([
+      "steam.exe",
+      "notepad.exe",
+      "Discord.exe",
     ]);
   });
 
@@ -140,5 +146,51 @@ describe("SessionSetup Component", () => {
         })
       );
     });
+  });
+
+  it("opens running processes picker and allows selecting a process to add to blacklist", async () => {
+    render(<SessionSetup />);
+
+    const pickBtn = screen.getByRole("button", { name: /Chọn từ ứng dụng đang mở/i });
+    fireEvent.click(pickBtn);
+
+    await waitFor(() => {
+      expect(api.listRunningProcesses).toHaveBeenCalled();
+      const panel = document.getElementById("panel-running-processes");
+      expect(panel).not.toBeNull();
+      expect(within(panel!).getByText("steam.exe")).toBeDefined();
+      expect(within(panel!).getByText("Discord.exe")).toBeDefined();
+    });
+
+    const panel = document.getElementById("panel-running-processes")!;
+    const steamItem = within(panel).getByText("steam.exe");
+    fireEvent.click(steamItem);
+
+    // Verify input gets set to steam.exe and itemType is app
+    const input = screen.getByPlaceholderText(/Thêm tiến trình/i) as HTMLInputElement;
+    expect(input.value).toBe("steam.exe");
+
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select.value).toBe("app");
+  });
+
+  it("filters running processes by search query", async () => {
+    render(<SessionSetup />);
+
+    const pickBtn = screen.getByRole("button", { name: /Chọn từ ứng dụng đang mở/i });
+    fireEvent.click(pickBtn);
+
+    await waitFor(() => {
+      const panel = document.getElementById("panel-running-processes");
+      expect(panel).not.toBeNull();
+      expect(within(panel!).getByText("steam.exe")).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText(/Tìm kiếm ứng dụng/i);
+    fireEvent.change(searchInput, { target: { value: "notep" } });
+
+    const panel = document.getElementById("panel-running-processes")!;
+    expect(within(panel).getByText("notepad.exe")).toBeDefined();
+    expect(within(panel).queryByText("steam.exe")).toBeNull();
   });
 });

@@ -231,3 +231,45 @@ async fn test_repeated_distraction_triggers_with_debounce_gap() {
     assert_eq!(guard[1].session_id, session_id);
 }
 
+#[tokio::test]
+async fn test_steam_blacklist_and_detection_with_process_aliases() {
+    let conn = Connection::open_in_memory().unwrap();
+    db::init_db(&conn).unwrap();
+
+    // User picked "steam.exe" from list_running_processes
+    let _ = conn.execute("DELETE FROM blacklist WHERE name LIKE 'steam%';", []);
+    db::add_blacklist_item(&conn, "steam.exe", "app").unwrap();
+
+    let session = db::create_session(&conn, "Study Deep Work", 30).unwrap();
+    let app_state = AppState::new(conn);
+    let mut debouncer = DistractionDebouncer::new(Duration::from_millis(50));
+
+    let events: Arc<std::sync::Mutex<Vec<DistractionEventPayload>>> =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+
+    // When user focuses Steam window on Windows, OS reports "steamwebhelper.exe"
+    let events_c = events.clone();
+    let res = process_monitor::poll_cycle(
+        &app_state,
+        &mut debouncer,
+        || Some("steamwebhelper.exe".to_string()),
+        move |p| events_c.lock().unwrap().push(p.clone()),
+    )
+    .await;
+
+    assert!(res.is_some(), "Must detect steamwebhelper.exe when steam.exe is blacklisted");
+    assert_eq!(res.unwrap().process_name, "steamwebhelper.exe");
+
+    let guard = events.lock().unwrap();
+    assert_eq!(guard.len(), 1);
+    assert_eq!(guard[0].process_name, "steamwebhelper.exe");
+    assert_eq!(guard[0].session_goal, "Study Deep Work");
+    assert_eq!(guard[0].session_id, session.id);
+
+    // Verify logged in DB
+    let conn_guard = app_state.db.lock().unwrap();
+    let distractions = db::get_session_distractions(&conn_guard, session.id).unwrap();
+    assert_eq!(distractions.len(), 1);
+    assert_eq!(distractions[0].process_name, "steamwebhelper.exe");
+}
+

@@ -53,6 +53,7 @@ pub fn run() {
             commands::remove_blacklist_item,
             commands::hide_overlay,
             commands::show_main_window,
+            commands::list_running_processes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running FocusGuard application");

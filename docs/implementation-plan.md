@@ -27,7 +27,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 
 ## Phase 1.6 — UX Improvements
 - [x] 1.6.1 Detailed distraction breakdown per session on Dashboard (feat(dashboard): show detailed distraction breakdown per session)
-- [ ] 1.6.2 Running processes picker in SessionSetup blacklist manager (feat(setup): select blacklist apps from running processes list)
+- [x] 1.6.2 Running processes picker in SessionSetup blacklist manager (feat(setup): select blacklist apps from running processes list)
 
 ## Phase 2 — Browser precision blocking
 - [ ] 2.1 WebExtension (Manifest V3) skeleton, Chrome + Firefox

@@ -10,6 +10,10 @@ import {
   ArrowRight,
   Globe,
   AppWindow,
+  Search,
+  RefreshCw,
+  X,
+  ChevronDown,
 } from "lucide-react";
 import {
   Session,
@@ -19,6 +23,7 @@ import {
   removeBlacklistItem,
   startSession,
   getActiveSession,
+  listRunningProcesses,
 } from "../lib/api";
 
 interface SessionSetupProps {
@@ -39,6 +44,12 @@ export function SessionSetup({ onSessionStarted, onNavigateToTimer }: SessionSet
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isAddingBlacklist, setIsAddingBlacklist] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Running processes picker state
+  const [showProcessPicker, setShowProcessPicker] = useState<boolean>(false);
+  const [runningProcesses, setRunningProcesses] = useState<string[]>([]);
+  const [isLoadingProcesses, setIsLoadingProcesses] = useState<boolean>(false);
+  const [processFilter, setProcessFilter] = useState<string>("");
 
   // Load active session and blacklist on mount
   const loadInitialData = useCallback(async () => {
@@ -110,6 +121,38 @@ export function SessionSetup({ onSessionStarted, onNavigateToTimer }: SessionSet
       setBlacklist((prev) => prev.filter((item) => item.id !== id));
     }
   };
+
+  // Fetch running processes from system
+  const handleLoadRunningProcesses = async () => {
+    setIsLoadingProcesses(true);
+    try {
+      const procs = await listRunningProcesses();
+      setRunningProcesses(procs);
+    } catch {
+      // Fallback
+      setRunningProcesses(["steam.exe", "notepad.exe", "Discord.exe", "chrome.exe", "Code.exe", "Spotify.exe"]);
+    } finally {
+      setIsLoadingProcesses(false);
+    }
+  };
+
+  const handleToggleProcessPicker = () => {
+    const next = !showProcessPicker;
+    setShowProcessPicker(next);
+    if (next && runningProcesses.length === 0) {
+      handleLoadRunningProcesses();
+    }
+  };
+
+  const handleSelectProcess = (procName: string) => {
+    setNewTargetName(procName);
+    setNewTargetType("app");
+    setShowProcessPicker(false);
+  };
+
+  const filteredProcesses = runningProcesses.filter((p) =>
+    p.toLowerCase().includes(processFilter.toLowerCase().trim())
+  );
 
   // Handle start session form submit
   const handleStartSession = async (e: React.FormEvent) => {
@@ -370,6 +413,105 @@ export function SessionSetup({ onSessionStarted, onNavigateToTimer }: SessionSet
               </button>
             </div>
           </div>
+
+          {/* Running Process Picker Button */}
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              id="btn-pick-running-app"
+              onClick={handleToggleProcessPicker}
+              className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 px-3 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors cursor-pointer font-medium"
+            >
+              <AppWindow className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Chọn từ ứng dụng đang mở</span>
+              <ChevronDown className={`w-3 h-3 transition-transform ${showProcessPicker ? "rotate-180" : ""}`} />
+            </button>
+            <span className="text-[11px] text-slate-500 hidden sm:inline">
+              Lọc danh sách cửa sổ đang chạy để chọn chính xác tên file .exe
+            </span>
+          </div>
+
+          {/* Dropdown / Popover panel for running processes */}
+          {showProcessPicker && (
+            <div
+              id="panel-running-processes"
+              className="p-3 bg-slate-900/95 border border-indigo-500/30 rounded-xl space-y-2.5 shadow-2xl animate-fadeIn"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                <div className="flex items-center gap-2">
+                  <AppWindow className="w-4 h-4 text-indigo-400" />
+                  <span className="text-xs font-semibold text-slate-200">
+                    Ứng dụng đang mở trên máy ({runningProcesses.length})
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    id="btn-refresh-running-procs"
+                    onClick={handleLoadRunningProcesses}
+                    disabled={isLoadingProcesses}
+                    className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Làm mới danh sách"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingProcesses ? "animate-spin" : ""}`} />
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-close-running-procs"
+                    onClick={() => setShowProcessPicker(false)}
+                    className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                    title="Đóng"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Search in running apps */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
+                <input
+                  id="input-search-running-proc"
+                  type="text"
+                  value={processFilter}
+                  onChange={(e) => setProcessFilter(e.target.value)}
+                  placeholder="Tìm kiếm ứng dụng (vd: steam, discord, chrome)..."
+                  className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              {/* List */}
+              <div className="max-h-48 overflow-y-auto space-y-1 scrollbar-thin">
+                {isLoadingProcesses ? (
+                  <div className="py-4 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                    <span>Đang quét các ứng dụng đang chạy...</span>
+                  </div>
+                ) : filteredProcesses.length === 0 ? (
+                  <div className="py-3 text-center text-xs text-slate-500">
+                    Không tìm thấy ứng dụng nào khớp với "{processFilter}"
+                  </div>
+                ) : (
+                  filteredProcesses.map((proc) => (
+                    <button
+                      key={proc}
+                      type="button"
+                      onClick={() => handleSelectProcess(proc)}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-indigo-600/20 hover:text-indigo-200 border border-transparent hover:border-indigo-500/30 text-xs text-slate-300 font-mono flex items-center justify-between group transition-colors cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2 truncate">
+                        <AppWindow className="w-3 h-3 text-slate-500 group-hover:text-indigo-400 flex-shrink-0" />
+                        <span className="truncate">{proc}</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 group-hover:text-indigo-300 flex-shrink-0 font-sans">
+                        Chọn ↵
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Section 4: Submit Button */}

@@ -116,3 +116,11 @@ export async function showMainWindow(): Promise<void> {
   return invoke<void>("show_main_window");
 }
 
+/**
+ * List currently running user applications for blacklist selection
+ */
+export async function listRunningProcesses(): Promise<string[]> {
+  return invoke<string[]>("list_running_processes");
+}
+
+

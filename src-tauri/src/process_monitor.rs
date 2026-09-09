@@ -35,9 +35,17 @@ impl DistractionDebouncer {
 /// Checks if a foreground process name matches any blacklist entry
 pub fn matches_blacklist(process_name: &str, blacklist: &[db::BlacklistRecord]) -> bool {
     let lower_proc = process_name.to_ascii_lowercase();
+    let lower_proc_stem = lower_proc.strip_suffix(".exe").unwrap_or(&lower_proc);
+
     blacklist.iter().any(|item| {
         if item.item_type == "app" {
-            item.name.eq_ignore_ascii_case(&lower_proc)
+            let lower_item = item.name.to_ascii_lowercase();
+            let lower_item_stem = lower_item.strip_suffix(".exe").unwrap_or(&lower_item);
+
+            lower_item == lower_proc
+                || lower_item_stem == lower_proc_stem
+                || (lower_item_stem == "steam" && lower_proc_stem == "steamwebhelper")
+                || (lower_item_stem == "steamwebhelper" && lower_proc_stem == "steam")
         } else {
             false
         }
@@ -311,11 +319,20 @@ pub mod tests {
                 name: "facebook.com".to_string(),
                 item_type: "domain".to_string(),
             },
+            db::BlacklistRecord {
+                id: 3,
+                name: "steam.exe".to_string(),
+                item_type: "app".to_string(),
+            },
         ];
 
         assert!(matches_blacklist("notepad.exe", &blacklist));
+        assert!(matches_blacklist("notepad", &blacklist));
         assert!(matches_blacklist("NOTEPAD.EXE", &blacklist));
         assert!(matches_blacklist("Notepad.exe", &blacklist));
+        assert!(matches_blacklist("steam.exe", &blacklist));
+        assert!(matches_blacklist("steamwebhelper.exe", &blacklist));
+        assert!(matches_blacklist("steamwebhelper", &blacklist));
         assert!(!matches_blacklist("code.exe", &blacklist));
         assert!(!matches_blacklist("facebook.com", &blacklist)); // Domain type not matched as process name
     }

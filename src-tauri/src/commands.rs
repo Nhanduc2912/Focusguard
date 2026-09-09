@@ -138,6 +138,101 @@ pub fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Helper to list running user desktop processes (with UI windows, filtering system daemons)
+#[cfg(windows)]
+fn get_running_desktop_processes() -> Vec<String> {
+    use std::collections::HashSet;
+    use sysinfo::{ProcessesToUpdate, System};
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindowVisible,
+    };
+
+    let mut visible_pids: HashSet<u32> = HashSet::new();
+
+    unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let pids_ptr = lparam.0 as *mut HashSet<u32>;
+        if IsWindowVisible(hwnd).as_bool() && GetWindowTextLengthW(hwnd) > 0 {
+            let mut pid = 0;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid != 0 {
+                (*pids_ptr).insert(pid);
+            }
+        }
+        BOOL(1)
+    }
+
+    unsafe {
+        let _ = EnumWindows(Some(enum_proc), LPARAM(&mut visible_pids as *mut _ as isize));
+    }
+
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+
+    let system_blacklist = [
+        "svchost.exe", "system", "registry", "smss.exe", "csrss.exe", "wininit.exe",
+        "services.exe", "lsass.exe", "dwm.exe", "fontdrvhost.exe", "runtimebroker.exe",
+        "shellexperiencehost.exe", "searchhost.exe", "startmenuexperiencehost.exe",
+        "applicationframehost.exe", "textinputhost.exe", "conhost.exe", "taskhostw.exe",
+        "sihost.exe", "ctfmon.exe", "dllhost.exe", "spoolsv.exe",
+    ];
+
+    let mut result_set = HashSet::new();
+
+    // 1. Add processes that have a visible window
+    for (pid, process) in system.processes() {
+        let pid_u32 = pid.as_u32();
+        let name = process.name().to_string_lossy().to_string();
+        let lower = name.to_ascii_lowercase();
+
+        if system_blacklist.contains(&lower.as_str()) {
+            continue;
+        }
+
+        if visible_pids.contains(&pid_u32) {
+            result_set.insert(name);
+        }
+    }
+
+    // 2. Also ensure popular game/desktop apps are captured if running even if minimized
+    for process in system.processes().values() {
+        let name = process.name().to_string_lossy().to_string();
+        let lower = name.to_ascii_lowercase();
+
+        if system_blacklist.contains(&lower.as_str()) {
+            continue;
+        }
+
+        if lower.contains("steam") || lower.contains("discord") || lower.contains("spotify") || lower.contains("epic") {
+            result_set.insert(name);
+        }
+    }
+
+    let mut list: Vec<String> = result_set.into_iter().collect();
+    list.sort_by_key(|a| a.to_ascii_lowercase());
+    list
+}
+
+#[cfg(not(windows))]
+fn get_running_desktop_processes() -> Vec<String> {
+    use sysinfo::{ProcessesToUpdate, System};
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+    let mut list = Vec::new();
+    for process in system.processes().values() {
+        list.push(process.name().to_string_lossy().to_string());
+    }
+    list.sort();
+    list.dedup();
+    list
+}
+
+/// Tauri command: List currently running user applications for blacklist selection
+#[tauri::command]
+pub fn list_running_processes() -> Result<Vec<String>, String> {
+    Ok(get_running_desktop_processes())
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -215,5 +310,12 @@ pub mod tests {
         assert_eq!(distractions.len(), 2);
         assert_eq!(distractions[0].process_name, "Steam.exe");
         assert_eq!(distractions[1].process_name, "notepad.exe");
+    }
+
+    #[test]
+    fn test_commands_list_running_processes() {
+        let list = list_running_processes().unwrap();
+        // Running environment should return a list without error
+        assert!(list.iter().all(|name| !name.is_empty()));
     }
 }
