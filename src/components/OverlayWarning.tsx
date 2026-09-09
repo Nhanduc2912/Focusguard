@@ -28,34 +28,61 @@ export function OverlayWarning({
     } catch {
       // In web preview mode or when Tauri window is not available
       console.info("Overlay hidden in web preview mode");
+    } finally {
+      // Critical fix: ensure isClosing is reset so subsequent triggers render immediately
+      setIsClosing(false);
     }
   }, [onDismiss]);
 
-  // Listen for distraction-detected event from Tauri backend
+  // Listen for distraction-detected and focus events
   useEffect(() => {
-    let unlistenFn: (() => void) | undefined;
+    let unlistenDistraction: (() => void) | undefined;
+    let unlistenFocus: (() => void) | undefined;
+
+    // Reset closing state when window gains focus or visibility
+    const handleFocus = () => {
+      setIsClosing(false);
+    };
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("pageshow", handleFocus);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setIsClosing(false);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     // Dynamically import Tauri event listener if in Tauri runtime
     import("@tauri-apps/api/event")
-      .then(({ listen }) => {
-        return listen<DistractionEventPayload>("distraction-detected", (event) => {
-          if (event.payload) {
-            setProcessName(event.payload.processName);
-            setSessionGoal(event.payload.sessionGoal);
+      .then(async ({ listen }) => {
+        unlistenDistraction = await listen<DistractionEventPayload>(
+          "distraction-detected",
+          (event) => {
+            if (event.payload) {
+              setProcessName(event.payload.processName);
+              setSessionGoal(event.payload.sessionGoal);
+            }
             setIsClosing(false);
           }
+        );
+
+        unlistenFocus = await listen("tauri://focus", () => {
+          setIsClosing(false);
         });
-      })
-      .then((unlisten) => {
-        unlistenFn = unlisten;
       })
       .catch((err) => {
         console.debug("Tauri event listener not available in preview:", err);
       });
 
     return () => {
-      if (unlistenFn) {
-        unlistenFn();
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("pageshow", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (unlistenDistraction) {
+        unlistenDistraction();
+      }
+      if (unlistenFocus) {
+        unlistenFocus();
       }
     };
   }, []);

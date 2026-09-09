@@ -168,3 +168,66 @@ async fn test_end_to_end_lifecycle_with_notepad_blacklist() {
     println!("  ALL E2E VERIFICATION CHECKS PASSED SUCCESSFULLY!");
     println!("==========================================================================\n");
 }
+
+#[tokio::test]
+async fn test_repeated_distraction_triggers_with_debounce_gap() {
+    let conn = Connection::open_in_memory().expect("in-memory db");
+    db::init_db(&conn).expect("init db");
+    db::add_blacklist_item(&conn, "notepad.exe", "app").expect("add blacklist");
+
+    let goal = "Deep Work Session";
+    let session = db::create_session(&conn, goal, 60).expect("create session");
+    let session_id = session.id;
+
+    let app_state = AppState::new(conn);
+    let mut debouncer = DistractionDebouncer::new(Duration::from_millis(50));
+
+    let events: Arc<std::sync::Mutex<Vec<DistractionEventPayload>>> =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
+
+    // First trigger
+    let events_c1 = events.clone();
+    let res1 = process_monitor::poll_cycle(
+        &app_state,
+        &mut debouncer,
+        || Some("notepad.exe".to_string()),
+        move |p| events_c1.lock().unwrap().push(p.clone()),
+    )
+    .await;
+    assert!(res1.is_some());
+
+    // Immediate re-trigger suppressed
+    let events_c2 = events.clone();
+    let res2 = process_monitor::poll_cycle(
+        &app_state,
+        &mut debouncer,
+        || Some("notepad.exe".to_string()),
+        move |p| events_c2.lock().unwrap().push(p.clone()),
+    )
+    .await;
+    assert!(res2.is_none());
+
+    // Wait past debounce duration (50ms)
+    tokio::time::sleep(Duration::from_millis(60)).await;
+
+    // Second trigger: MUST produce full, valid distraction payload
+    let events_c3 = events.clone();
+    let res3 = process_monitor::poll_cycle(
+        &app_state,
+        &mut debouncer,
+        || Some("notepad.exe".to_string()),
+        move |p| events_c3.lock().unwrap().push(p.clone()),
+    )
+    .await;
+    assert!(res3.is_some());
+
+    let guard = events.lock().unwrap();
+    assert_eq!(guard.len(), 2, "Must receive exactly 2 distraction events across debounce gap");
+    assert_eq!(guard[0].process_name, "notepad.exe");
+    assert_eq!(guard[0].session_goal, goal);
+    assert_eq!(guard[1].process_name, "notepad.exe");
+    assert_eq!(guard[1].session_goal, goal);
+    assert_eq!(guard[0].session_id, session_id);
+    assert_eq!(guard[1].session_id, session_id);
+}
+

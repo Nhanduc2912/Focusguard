@@ -249,13 +249,14 @@ pub async fn start_polling_with<F>(
 {
     use tauri::{Emitter, Manager};
     run_polling_loop(app_state, interval_ms, get_fg, move |payload| {
-        let _ = app_handle.emit("distraction-detected", payload);
         if let Some(overlay) = app_handle.get_webview_window("overlay") {
-            let _ = overlay.show();
             let _ = overlay.unminimize();
+            let _ = overlay.show();
             let _ = overlay.set_focus();
             let _ = overlay.set_always_on_top(true);
+            let _ = overlay.emit("distraction-detected", payload);
         }
+        let _ = app_handle.emit("distraction-detected", payload);
     })
     .await;
 }

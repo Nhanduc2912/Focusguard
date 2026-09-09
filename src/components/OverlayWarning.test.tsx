@@ -55,4 +55,34 @@ describe("OverlayWarning Component", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it("resets isClosing so overlay container does not stay hidden on repeated triggers", async () => {
+    const onDismiss = vi.fn();
+    render(
+      <OverlayWarning
+        initialProcess="notepad.exe"
+        initialGoal="Work on Project"
+        onDismiss={onDismiss}
+      />
+    );
+
+    const overlayEl = document.getElementById("distraction-overlay");
+    expect(overlayEl).toBeDefined();
+    expect(overlayEl?.className).toContain("opacity-100");
+
+    // First dismiss
+    const button = screen.getByRole("button", { name: /quay lại tập trung/i });
+    fireEvent.click(button);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+
+    // After async hideOverlay resolves, isClosing is reset to false
+    await vi.waitFor(() => {
+      expect(overlayEl?.className).toContain("opacity-100");
+    });
+
+    // Window re-focuses on second distraction
+    fireEvent(window, new Event("focus"));
+    expect(overlayEl?.className).toContain("opacity-100");
+    expect(screen.getByText("Bạn đang xao nhãng!")).toBeDefined();
+  });
 });
