@@ -25,6 +25,10 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 - [x] 1.5.1 Fix blank overlay window on repeated distraction triggers (fix(overlay): resolve blank overlay on repeated distraction trigger)
 - [x] 1.5.2 Auto-end session, focus main window, and play sound when countdown reaches zero (fix(timer): auto-end session and notify when countdown reaches zero)
 
+## Phase 1.6 — UX Improvements
+- [x] 1.6.1 Detailed distraction breakdown per session on Dashboard (feat(dashboard): show detailed distraction breakdown per session)
+- [ ] 1.6.2 Running processes picker in SessionSetup blacklist manager (feat(setup): select blacklist apps from running processes list)
+
 ## Phase 2 — Browser precision blocking
 - [ ] 2.1 WebExtension (Manifest V3) skeleton, Chrome + Firefox
 - [ ] 2.2 Native messaging host connecting extension ↔ Tauri app

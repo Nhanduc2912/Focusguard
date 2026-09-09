@@ -47,6 +47,7 @@ pub fn run() {
             commands::end_session,
             commands::get_active_session,
             commands::get_history,
+            commands::get_session_distractions,
             commands::get_blacklist,
             commands::add_blacklist_item,
             commands::remove_blacklist_item,

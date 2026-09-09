@@ -72,6 +72,13 @@ export async function getHistory(): Promise<SessionWithStats[]> {
 }
 
 /**
+ * Get detailed distractions recorded for a specific session
+ */
+export async function getSessionDistractions(sessionId: number): Promise<Distraction[]> {
+  return invoke<Distraction[]>("get_session_distractions", { sessionId });
+}
+
+/**
  * Get all current blacklist items
  */
 export async function getBlacklist(): Promise<BlacklistItem[]> {

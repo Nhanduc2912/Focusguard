@@ -221,6 +221,30 @@ pub fn get_distraction_count(conn: &Connection, session_id: i64) -> Result<i64> 
     )
 }
 
+/// Get all distractions for a specific session ordered by timestamp ascending
+pub fn get_session_distractions(conn: &Connection, session_id: i64) -> Result<Vec<DistractionRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, session_id, process_name, timestamp 
+         FROM distractions 
+         WHERE session_id = ?1 
+         ORDER BY timestamp ASC, id ASC;",
+    )?;
+    let iter = stmt.query_map(params![session_id], |row| {
+        Ok(DistractionRecord {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            process_name: row.get(2)?,
+            timestamp: row.get(3)?,
+        })
+    })?;
+
+    let mut result = Vec::new();
+    for item in iter {
+        result.push(item?);
+    }
+    Ok(result)
+}
+
 /// Get all blacklist items
 pub fn get_blacklist(conn: &Connection) -> Result<Vec<BlacklistRecord>> {
     let mut stmt = conn.prepare("SELECT id, name, type FROM blacklist ORDER BY id ASC;")?;
@@ -349,5 +373,24 @@ pub mod tests {
         conn.execute("DELETE FROM sessions WHERE id = ?1;", params![session.id]).expect("delete session");
         let total_distractions: i64 = conn.query_row("SELECT COUNT(*) FROM distractions;", [], |r| r.get(0)).unwrap();
         assert_eq!(total_distractions, 0);
+    }
+
+    #[test]
+    fn test_get_session_distractions() {
+        let conn = setup_test_db();
+        let session = create_session(&conn, "Focus Test", 30).expect("session create");
+
+        let empty = get_session_distractions(&conn, session.id).expect("query empty");
+        assert!(empty.is_empty());
+
+        let d1 = log_distraction(&conn, session.id, "Steam.exe").expect("d1");
+        let d2 = log_distraction(&conn, session.id, "notepad.exe").expect("d2");
+
+        let list = get_session_distractions(&conn, session.id).expect("query list");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].id, d1.id);
+        assert_eq!(list[0].process_name, "Steam.exe");
+        assert_eq!(list[1].id, d2.id);
+        assert_eq!(list[1].process_name, "notepad.exe");
     }
 }

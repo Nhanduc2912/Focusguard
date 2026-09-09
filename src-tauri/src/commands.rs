@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use tauri::State;
 
-use crate::db::{self, BlacklistRecord, SessionRecord, SessionWithStats};
+use crate::db::{self, BlacklistRecord, DistractionRecord, SessionRecord, SessionWithStats};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -71,6 +71,16 @@ pub fn get_active_session(state: State<'_, AppState>) -> Result<Option<SessionRe
 pub fn get_history(state: State<'_, AppState>) -> Result<Vec<SessionWithStats>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     db::get_session_history(&conn).map_err(|e| e.to_string())
+}
+
+/// Tauri command: Get all distractions for a specific session ordered by timestamp
+#[tauri::command]
+pub fn get_session_distractions(
+    state: State<'_, AppState>,
+    session_id: i64,
+) -> Result<Vec<DistractionRecord>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::get_session_distractions(&conn, session_id).map_err(|e| e.to_string())
 }
 
 /// Tauri command: Get all blacklist items
@@ -190,5 +200,20 @@ pub mod tests {
 
         let final_items = db::get_blacklist(&conn).unwrap();
         assert_eq!(final_items.len(), initial_items.len());
+    }
+
+    #[test]
+    fn test_commands_get_session_distractions() {
+        let app_state = setup_test_state();
+        let conn = app_state.db.lock().unwrap();
+
+        let session = db::create_session(&conn, "Coding Task", 25).unwrap();
+        db::log_distraction(&conn, session.id, "Steam.exe").unwrap();
+        db::log_distraction(&conn, session.id, "notepad.exe").unwrap();
+
+        let distractions = db::get_session_distractions(&conn, session.id).unwrap();
+        assert_eq!(distractions.len(), 2);
+        assert_eq!(distractions[0].process_name, "Steam.exe");
+        assert_eq!(distractions[1].process_name, "notepad.exe");
     }
 }

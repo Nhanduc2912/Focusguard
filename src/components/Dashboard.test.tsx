@@ -8,6 +8,7 @@ vi.mock("../lib/api", async () => {
   return {
     ...actual,
     getHistory: vi.fn(),
+    getSessionDistractions: vi.fn(),
   };
 });
 
@@ -85,5 +86,46 @@ describe("Dashboard Component", () => {
     fireEvent.click(refreshBtn);
 
     expect(api.getHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it("expands session row and displays detailed distractions breakdown", async () => {
+    vi.mocked(api.getHistory).mockResolvedValue(mockHistory);
+    vi.mocked(api.getSessionDistractions).mockResolvedValue([
+      {
+        id: 11,
+        sessionId: 2,
+        processName: "Steam.exe",
+        timestamp: "2026-09-09T01:10:00Z",
+      },
+      {
+        id: 12,
+        sessionId: 2,
+        processName: "tiktok.com",
+        timestamp: "2026-09-09T01:20:00Z",
+      },
+    ]);
+
+    render(<Dashboard onStartNewSession={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Thiết kế giao diện Dashboard")).toBeDefined();
+    });
+
+    const expandBtn = document.getElementById("btn-expand-session-2");
+    expect(expandBtn).toBeDefined();
+
+    // Click expand
+    fireEvent.click(expandBtn!);
+
+    await waitFor(() => {
+      expect(api.getSessionDistractions).toHaveBeenCalledWith(2);
+      expect(screen.getByText("Steam.exe")).toBeDefined();
+      expect(screen.getByText("tiktok.com")).toBeDefined();
+      expect(screen.getByText("Nhật ký can thiệp (2 lần)")).toBeDefined();
+    });
+
+    // Toggle collapse
+    fireEvent.click(expandBtn!);
+    expect(document.getElementById("session-details-2")).toBeNull();
   });
 });
