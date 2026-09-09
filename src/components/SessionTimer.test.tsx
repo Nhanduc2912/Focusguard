@@ -21,6 +21,7 @@ vi.mock("../lib/api", async () => {
     ...actual,
     endSession: vi.fn(),
     getHistory: vi.fn(),
+    showMainWindow: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -151,5 +152,23 @@ describe("SessionTimer Component", () => {
 
     expect(api.endSession).toHaveBeenCalledTimes(1);
     expect(onEnded).toHaveBeenCalled();
+  });
+
+  it("auto-ends session and invokes onSessionEnded when countdown reaches zero", async () => {
+    const onEnded = vi.fn();
+    const expiredSession: api.Session = {
+      id: 99,
+      goal: "1-minute quick test",
+      plannedMinutes: 1,
+      startedAt: new Date(Date.now() - 65 * 1000).toISOString(), // started 65s ago (> 60s)
+    };
+
+    render(<SessionTimer session={expiredSession} onSessionEnded={onEnded} />);
+
+    await waitFor(() => {
+      expect(api.endSession).toHaveBeenCalled();
+      expect(api.showMainWindow).toHaveBeenCalled();
+      expect(onEnded).toHaveBeenCalled();
+    });
   });
 });

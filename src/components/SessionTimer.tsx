@@ -1,11 +1,46 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Clock, ShieldAlert, Square, Sparkles, CheckCircle2, AlertTriangle } from "lucide-react";
-import { Session, endSession, getHistory, DistractionEventPayload } from "../lib/api";
+import { Session, endSession, getHistory, DistractionEventPayload, showMainWindow } from "../lib/api";
 
 interface SessionTimerProps {
   session: Session | null;
   onSessionEnded?: (session: Session) => void;
   onNavigateToSetup?: () => void;
+}
+
+export function playSessionCompleteSound() {
+  try {
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+
+    // Play a gentle, crisp harmonic chime: C5 (523.25Hz) -> E5 (659.25Hz) -> G5 (783.99Hz) -> C6 (1046.50Hz)
+    const playTone = (freq: number, start: number, duration: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, start);
+
+      gain.gain.setValueAtTime(0.18, start);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(start);
+      osc.stop(start + duration);
+    };
+
+    const now = ctx.currentTime;
+    playTone(523.25, now, 0.35);        // C5
+    playTone(659.25, now + 0.18, 0.35); // E5
+    playTone(783.99, now + 0.36, 0.55); // G5
+    playTone(1046.50, now + 0.54, 0.8); // C6
+  } catch (e) {
+    console.warn("Audio notification failed or Web Audio API not supported:", e);
+  }
 }
 
 function formatRemainingTime(seconds: number): string {
@@ -83,11 +118,19 @@ export function SessionTimer({
     };
   }, [session]);
 
+  const hasAutoEnded = useRef<boolean>(false);
+
+  // Reset auto-ended flag whenever session changes
+  useEffect(() => {
+    hasAutoEnded.current = false;
+  }, [session?.id]);
+
   const handleEndSession = useCallback(async () => {
     if (!session || isEnding) return;
     setIsEnding(true);
     setErrorMsg(null);
     try {
+      showMainWindow().catch(() => {});
       const ended = await endSession();
       setShowConfirmEnd(false);
       if (onSessionEnded) {
@@ -104,6 +147,23 @@ export function SessionTimer({
       setIsEnding(false);
     }
   }, [session, isEnding, onSessionEnded]);
+
+  // Calculate timing & progress
+  const startedAtMs = new Date(session?.startedAt || "").getTime() || now;
+  const totalSeconds = session ? Math.max(1, session.plannedMinutes * 60) : 60;
+  const elapsedSeconds = session ? Math.max(0, Math.floor((now - startedAtMs) / 1000)) : 0;
+  const remainingSeconds = session ? Math.max(0, totalSeconds - elapsedSeconds) : 0;
+  const progressPercent = Math.min(100, (elapsedSeconds / totalSeconds) * 100);
+  const isTimeOver = remainingSeconds === 0;
+
+  // Auto-end session when countdown reaches zero, play notification sound, focus main window
+  useEffect(() => {
+    if (session && remainingSeconds <= 0 && !hasAutoEnded.current && !isEnding) {
+      hasAutoEnded.current = true;
+      playSessionCompleteSound();
+      handleEndSession();
+    }
+  }, [session, remainingSeconds, isEnding, handleEndSession]);
 
   if (!session) {
     return (
@@ -125,14 +185,6 @@ export function SessionTimer({
       </div>
     );
   }
-
-  // Calculate timing & progress
-  const startedAtMs = new Date(session.startedAt).getTime() || now;
-  const totalSeconds = Math.max(1, session.plannedMinutes * 60);
-  const elapsedSeconds = Math.max(0, Math.floor((now - startedAtMs) / 1000));
-  const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
-  const progressPercent = Math.min(100, (elapsedSeconds / totalSeconds) * 100);
-  const isTimeOver = remainingSeconds === 0;
 
   return (
     <div className="space-y-6">

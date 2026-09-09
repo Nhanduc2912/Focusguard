@@ -23,7 +23,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 
 ## Phase 1.5 — Critical bug fixes
 - [x] 1.5.1 Fix blank overlay window on repeated distraction triggers (fix(overlay): resolve blank overlay on repeated distraction trigger)
-- [ ] 1.5.2 Auto-end session, focus main window, and play sound when countdown reaches zero (fix(timer): auto-end session and notify when countdown reaches zero)
+- [x] 1.5.2 Auto-end session, focus main window, and play sound when countdown reaches zero (fix(timer): auto-end session and notify when countdown reaches zero)
 
 ## Phase 2 — Browser precision blocking
 - [ ] 2.1 WebExtension (Manifest V3) skeleton, Chrome + Firefox

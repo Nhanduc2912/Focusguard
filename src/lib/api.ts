@@ -101,3 +101,11 @@ export async function removeBlacklistItem(id: number): Promise<boolean> {
 export async function hideOverlay(): Promise<void> {
   return invoke<void>("hide_overlay");
 }
+
+/**
+ * Bring the main application window to the foreground and focus it
+ */
+export async function showMainWindow(): Promise<void> {
+  return invoke<void>("show_main_window");
+}
+
