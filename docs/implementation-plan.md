@@ -30,6 +30,11 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 - [x] 1.6.1 Detailed distraction breakdown per session on Dashboard (feat(dashboard): show detailed distraction breakdown per session)
 - [x] 1.6.2 Running processes picker in SessionSetup blacklist manager (feat(setup): select blacklist apps from running processes list)
 
+## Known limitations / bàn giao Phase 1
+- **Phạm vi giám sát:** Phase 1 tập trung hoàn toàn vào giám sát cấp hệ điều hành (OS-level process monitoring qua `GetForegroundWindow` / `sysinfo`) đối với các ứng dụng desktop (`.exe`, game, Steam, launcher, Discord, v.v.).
+- **Giới hạn trình duyệt (Chưa có trong Phase 1):** Phase 1 **CHƯA** chặn được URL cụ thể hoặc từng tab riêng lẻ bên trong trình duyệt (ví dụ: chưa thể phân biệt video học tập trên YouTube với video giải trí, hoặc xem URL bài viết Facebook). Việc chặn web hiện tại ở Phase 1 chỉ dừng ở mức chặn thô (coarse blocking) theo tên tiến trình hoặc tiêu đề cửa sổ trình duyệt.
+- **Bàn giao sang Phase 2:** Tính năng bóc tách từng tab, chặn URL chính xác (chặn hoàn toàn `facebook.com`, `tiktok.com`; whitelist duy nhất video/playlist YouTube chỉ định cho phiên) sẽ được thực hiện thông qua WebExtension (Manifest V3) và Native Messaging Host trong Phase 2.
+
 ## Phase 2 — Browser precision blocking
 - [ ] 2.1 WebExtension (Manifest V3) skeleton, Chrome + Firefox
 - [ ] 2.2 Native messaging host connecting extension ↔ Tauri app
