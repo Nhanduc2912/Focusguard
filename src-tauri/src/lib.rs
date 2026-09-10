@@ -1,6 +1,7 @@
 pub mod browser_detection;
 pub mod commands;
 pub mod db;
+pub mod native_host;
 pub mod process_monitor;
 
 use commands::AppState;

@@ -37,8 +37,8 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 
 ## Phase 2 — Browser precision blocking
 - [x] 2.0 Browser Setup screen: detect installed browsers (Chrome/Brave/Edge) and let user select which to monitor (monitored_browsers table)
-- [ ] 2.1 WebExtension (Manifest V3) skeleton, Chrome + Firefox
-- [ ] 2.2 Native messaging host connecting extension ↔ Tauri app
+- [x] 2.1 Native messaging host mode: stdio protocol (4-byte LE framing + JSON UTF-8), --native-host flag, SQLite reuse
+- [ ] 2.2 WebExtension (Manifest V3) skeleton & registry registration (Chrome/Edge/Brave/Firefox)
 - [ ] 2.3 Per-tab URL matching (block facebook.com/tiktok.com fully; on
       YouTube, allow only a whitelisted video/playlist id set at session start)
 - [ ] 2.4 Extension UI: shows current session status, "locked video" indicator
