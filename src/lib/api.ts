@@ -37,6 +37,14 @@ export interface DistractionEventPayload {
   timestamp?: string;
 }
 
+export interface BrowserInfo {
+  id: string;
+  name: string;
+  installed: boolean;
+  exePath?: string;
+  enabled: boolean;
+}
+
 /**
  * Ping backend to verify Tauri IPC communication
  */
@@ -130,5 +138,20 @@ export async function listRunningProcesses(): Promise<string[]> {
 export async function getLatestDistraction(): Promise<DistractionEventPayload | null> {
   return invoke<DistractionEventPayload | null>("get_latest_distraction");
 }
+
+/**
+ * Detect installed browsers (Chrome, Brave, Edge) and load monitoring preferences
+ */
+export async function detectInstalledBrowsers(): Promise<BrowserInfo[]> {
+  return invoke<BrowserInfo[]>("detect_installed_browsers");
+}
+
+/**
+ * Update monitoring preference for a specific browser
+ */
+export async function setBrowserMonitored(browserId: string, enabled: boolean): Promise<void> {
+  return invoke<void>("set_browser_monitored", { browserId, enabled });
+}
+
 
 

@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
-import { Shield, Sparkles, Clock, History } from "lucide-react";
+import { Shield, Sparkles, Clock, History, Globe } from "lucide-react";
 import { ping, Session, SessionWithStats, getActiveSession, getHistory } from "./lib/api";
 import { SessionSetup } from "./components/SessionSetup";
 import { SessionTimer } from "./components/SessionTimer";
 import { SessionSummary } from "./components/SessionSummary";
 import { Dashboard } from "./components/Dashboard";
+import { BrowserSetup } from "./components/BrowserSetup";
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<"setup" | "timer" | "dashboard">("setup");
+  const [activeTab, setActiveTab] = useState<"setup" | "timer" | "dashboard" | "browsers">("setup");
   const [backendStatus, setBackendStatus] = useState<string>("Checking backend...");
   const [isTauriReady, setIsTauriReady] = useState<boolean>(false);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
@@ -118,6 +119,18 @@ export function App() {
             <History className="w-4 h-4" />
             Past History
           </button>
+          <button
+            id="tab-browsers"
+            onClick={() => setActiveTab("browsers")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "browsers"
+                ? "bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-sm"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+            }`}
+          >
+            <Globe className="w-4 h-4" />
+            Cài đặt trình duyệt
+          </button>
         </nav>
 
         {/* Content Area */}
@@ -180,6 +193,10 @@ export function App() {
 
           {activeTab === "dashboard" && (
             <Dashboard onStartNewSession={() => setActiveTab("setup")} />
+          )}
+
+          {activeTab === "browsers" && (
+            <BrowserSetup />
           )}
         </div>
       </main>

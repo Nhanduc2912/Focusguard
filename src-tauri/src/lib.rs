@@ -1,3 +1,4 @@
+pub mod browser_detection;
 pub mod commands;
 pub mod db;
 pub mod process_monitor;
@@ -55,6 +56,8 @@ pub fn run() {
             commands::show_main_window,
             commands::list_running_processes,
             commands::get_latest_distraction,
+            commands::detect_installed_browsers,
+            commands::set_browser_monitored,
         ])
         .run(tauri::generate_context!())
         .expect("error while running FocusGuard application");

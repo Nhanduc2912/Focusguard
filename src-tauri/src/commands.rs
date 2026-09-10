@@ -262,6 +262,27 @@ pub fn list_running_processes() -> Result<Vec<String>, String> {
     Ok(get_running_desktop_processes())
 }
 
+/// Tauri command: Detect installed browsers (Chrome, Brave, Edge) and load monitoring preferences
+#[tauri::command]
+pub fn detect_installed_browsers(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::browser_detection::BrowserInfo>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let prefs = db::get_monitored_browsers(&conn).map_err(|e| e.to_string())?;
+    Ok(crate::browser_detection::detect_all_browsers(&prefs))
+}
+
+/// Tauri command: Set monitoring enabled/disabled for a specific browser
+#[tauri::command]
+pub fn set_browser_monitored(
+    state: State<'_, AppState>,
+    browser_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::set_browser_monitored(&conn, &browser_id, enabled).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -367,4 +388,22 @@ pub mod tests {
         let proc: String = row.get(0).unwrap();
         assert_eq!(proc, "steam.exe");
     }
+
+    #[test]
+    fn test_commands_detect_installed_browsers_and_toggle() {
+        let app_state = setup_test_state();
+        let conn = app_state.db.lock().unwrap();
+        let prefs = db::get_monitored_browsers(&conn).unwrap();
+        let list = crate::browser_detection::detect_all_browsers(&prefs);
+        assert_eq!(list.len(), 3);
+        assert!(list.iter().any(|b| b.id == "chrome"));
+        assert!(list.iter().any(|b| b.id == "brave"));
+        assert!(list.iter().any(|b| b.id == "edge"));
+
+        // Toggle monitored status
+        db::set_browser_monitored(&conn, "chrome", false).unwrap();
+        let updated_prefs = db::get_monitored_browsers(&conn).unwrap();
+        assert_eq!(updated_prefs.get("chrome"), Some(&false));
+    }
 }
+

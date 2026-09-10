@@ -12,6 +12,7 @@ vi.mock("./lib/api", () => ({
   removeBlacklistItem: vi.fn(),
   hideOverlay: vi.fn(),
   getHistory: vi.fn().mockResolvedValue([]),
+  detectInstalledBrowsers: vi.fn().mockResolvedValue([]),
 }));
 
 describe("FocusGuard App Shell", () => {
@@ -21,6 +22,7 @@ describe("FocusGuard App Shell", () => {
     expect(screen.getByText("Session Setup")).toBeDefined();
     expect(screen.getByText("Active Session")).toBeDefined();
     expect(screen.getByText("Past History")).toBeDefined();
+    expect(screen.getByText("Cài đặt trình duyệt")).toBeDefined();
     expect(await screen.findByText("Backend connected (Tauri v2 + Rust)")).toBeDefined();
   });
 });

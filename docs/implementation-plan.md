@@ -36,6 +36,7 @@ the previous phase is verified PASS (see `.agents/skills/testing-verification`).
 - **Bàn giao sang Phase 2:** Tính năng bóc tách từng tab, chặn URL chính xác (chặn hoàn toàn `facebook.com`, `tiktok.com`; whitelist duy nhất video/playlist YouTube chỉ định cho phiên) sẽ được thực hiện thông qua WebExtension (Manifest V3) và Native Messaging Host trong Phase 2.
 
 ## Phase 2 — Browser precision blocking
+- [x] 2.0 Browser Setup screen: detect installed browsers (Chrome/Brave/Edge) and let user select which to monitor (monitored_browsers table)
 - [ ] 2.1 WebExtension (Manifest V3) skeleton, Chrome + Firefox
 - [ ] 2.2 Native messaging host connecting extension ↔ Tauri app
 - [ ] 2.3 Per-tab URL matching (block facebook.com/tiktok.com fully; on

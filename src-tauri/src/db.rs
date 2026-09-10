@@ -65,6 +65,11 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             type TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS monitored_browsers (
+            browser_name TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 1
+        );
+
         CREATE INDEX IF NOT EXISTS idx_distractions_session_id ON distractions(session_id);
         CREATE INDEX IF NOT EXISTS idx_blacklist_name ON blacklist(name);",
     )?;
@@ -87,6 +92,16 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         let mut stmt = conn.prepare("INSERT OR IGNORE INTO blacklist (name, type) VALUES (?1, ?2);")?;
         for (name, item_type) in default_presets {
             stmt.execute(params![name, item_type])?;
+        }
+    }
+
+    // Seed default monitored browsers if empty
+    let browser_count: i64 = conn.query_row("SELECT COUNT(*) FROM monitored_browsers;", [], |row| row.get(0))?;
+    if browser_count == 0 {
+        let default_browsers = ["chrome", "brave", "edge"];
+        let mut b_stmt = conn.prepare("INSERT OR IGNORE INTO monitored_browsers (browser_name, enabled) VALUES (?1, 1);")?;
+        for b in default_browsers {
+            b_stmt.execute(params![b])?;
         }
     }
 
@@ -283,6 +298,33 @@ pub fn remove_blacklist_item(conn: &Connection, id: i64) -> Result<bool> {
     Ok(affected > 0)
 }
 
+/// Get all monitored browsers preferences from SQLite
+pub fn get_monitored_browsers(conn: &Connection) -> Result<std::collections::HashMap<String, bool>> {
+    let mut stmt = conn.prepare("SELECT browser_name, enabled FROM monitored_browsers;")?;
+    let rows = stmt.query_map([], |row| {
+        let name: String = row.get(0)?;
+        let enabled_int: i64 = row.get(1)?;
+        Ok((name, enabled_int != 0))
+    })?;
+
+    let mut map = std::collections::HashMap::new();
+    for item in rows {
+        let (name, enabled) = item?;
+        map.insert(name, enabled);
+    }
+    Ok(map)
+}
+
+/// Set monitored status for a specific browser
+pub fn set_browser_monitored(conn: &Connection, browser_name: &str, enabled: bool) -> Result<()> {
+    conn.execute(
+        "INSERT INTO monitored_browsers (browser_name, enabled) VALUES (?1, ?2)
+         ON CONFLICT(browser_name) DO UPDATE SET enabled = excluded.enabled;",
+        params![browser_name, if enabled { 1 } else { 0 }],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -393,4 +435,26 @@ pub mod tests {
         assert_eq!(list[1].id, d2.id);
         assert_eq!(list[1].process_name, "notepad.exe");
     }
+
+    #[test]
+    fn test_monitored_browsers_crud() {
+        let conn = setup_test_db();
+        let map = get_monitored_browsers(&conn).expect("get browsers");
+        // Defaults seeded
+        assert_eq!(map.get("chrome"), Some(&true));
+        assert_eq!(map.get("brave"), Some(&true));
+        assert_eq!(map.get("edge"), Some(&true));
+
+        // Toggle brave off
+        set_browser_monitored(&conn, "brave", false).expect("disable brave");
+        let updated = get_monitored_browsers(&conn).expect("get updated");
+        assert_eq!(updated.get("brave"), Some(&false));
+        assert_eq!(updated.get("chrome"), Some(&true));
+
+        // Toggle brave back on
+        set_browser_monitored(&conn, "brave", true).expect("enable brave");
+        let updated2 = get_monitored_browsers(&conn).expect("get updated2");
+        assert_eq!(updated2.get("brave"), Some(&true));
+    }
 }
+
