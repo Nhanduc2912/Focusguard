@@ -128,9 +128,9 @@ fn check_unix_browser_paths(id: &str) -> Option<PathBuf> {
     };
 
     for c in candidates {
-        let p = Path::new(c);
+        let p = PathBuf::from(c);
         if p.exists() {
-            return Some(p.to_path_buf());
+            return Some(p);
         }
     }
     None
