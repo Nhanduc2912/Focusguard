@@ -138,6 +138,56 @@ pub fn create_session(conn: &Connection, goal: &str, planned_minutes: i64) -> Re
     )
 }
 
+/// Validate business rules and start a new focus session.
+/// Ensures goal is non-empty, minutes > 0, and strictly only one session can be active at a time.
+pub fn start_session_validated(
+    conn: &Connection,
+    goal: &str,
+    planned_minutes: i64,
+    youtube_whitelist_id: Option<&str>,
+) -> std::result::Result<SessionRecord, String> {
+    let trimmed_goal = goal.trim();
+    if trimmed_goal.is_empty() {
+        return Err("Session goal cannot be empty".to_string());
+    }
+    if planned_minutes <= 0 {
+        return Err("Planned minutes must be greater than 0".to_string());
+    }
+
+    if let Some(active) = get_active_session(conn).map_err(|e| e.to_string())? {
+        return Err(format!(
+            "A session is already active (id: {}, goal: '{}')",
+            active.id, active.goal
+        ));
+    }
+
+    let mut session = create_session(conn, trimmed_goal, planned_minutes)
+        .map_err(|e| e.to_string())?;
+
+    if let Some(w_id) = youtube_whitelist_id {
+        let trimmed_wid = w_id.trim();
+        if !trimmed_wid.is_empty() {
+            set_session_youtube_whitelist(conn, session.id, Some(trimmed_wid))
+                .map_err(|e| e.to_string())?;
+            session.youtube_whitelist_id = Some(trimmed_wid.to_string());
+        }
+    }
+
+    Ok(session)
+}
+
+/// End the currently active session if one exists, or return None.
+pub fn end_active_session(conn: &Connection) -> std::result::Result<Option<SessionRecord>, String> {
+    let active = get_active_session(conn).map_err(|e| e.to_string())?;
+    match active {
+        Some(session) => {
+            let ended = end_session(conn, session.id).map_err(|e| e.to_string())?;
+            Ok(Some(ended))
+        }
+        None => Ok(None),
+    }
+}
+
 /// End the specified session with the current timestamp
 pub fn end_session(conn: &Connection, session_id: i64) -> Result<SessionRecord> {
     conn.execute(
@@ -398,6 +448,42 @@ pub mod tests {
         set_session_youtube_whitelist(&conn, session.id, None).expect("clear whitelist");
         let active2 = get_active_session(&conn).expect("query error").expect("active session");
         assert!(active2.youtube_whitelist_id.is_none());
+    }
+
+    #[test]
+    fn test_start_session_validated_rules() {
+        let conn = setup_test_db();
+
+        // 1. Empty goal error
+        let err_empty = start_session_validated(&conn, "   ", 30, None);
+        assert!(err_empty.is_err());
+        assert_eq!(err_empty.unwrap_err(), "Session goal cannot be empty");
+
+        // 2. Non-positive minutes error
+        let err_zero = start_session_validated(&conn, "Focus", 0, None);
+        assert!(err_zero.is_err());
+        assert_eq!(err_zero.unwrap_err(), "Planned minutes must be greater than 0");
+
+        // 3. Valid first session
+        let s1 = start_session_validated(&conn, "First Session", 45, Some("vid123")).expect("start session");
+        assert_eq!(s1.goal, "First Session");
+        assert_eq!(s1.youtube_whitelist_id.as_deref(), Some("vid123"));
+
+        // 4. Duplicate active session error
+        let err_dup = start_session_validated(&conn, "Second Session", 30, None);
+        assert!(err_dup.is_err());
+        let dup_msg = err_dup.unwrap_err();
+        assert!(dup_msg.contains("A session is already active"));
+        assert!(dup_msg.contains("First Session"));
+
+        // 5. End active session
+        let ended = end_active_session(&conn).expect("end active").expect("should have active");
+        assert_eq!(ended.id, s1.id);
+        assert!(get_active_session(&conn).expect("query").is_none());
+
+        // 6. Now can start new session
+        let s2 = start_session_validated(&conn, "Second Session", 30, None).expect("start 2nd");
+        assert_eq!(s2.goal, "Second Session");
     }
 
     #[test]

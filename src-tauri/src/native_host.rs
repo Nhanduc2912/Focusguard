@@ -133,43 +133,40 @@ pub fn process_message(msg: &Value, conn: &Connection) -> Value {
         "start_session" => {
             let goal = msg.get("goal").and_then(Value::as_str).unwrap_or("Tập trung");
             let minutes = msg.get("plannedMinutes").and_then(Value::as_i64).unwrap_or(30);
-            match db::create_session(conn, goal, minutes) {
-                Ok(mut session) => {
-                    if let Some(whitelist_id) = msg.get("youtubeWhitelistId").and_then(Value::as_str) {
-                        let _ = db::set_session_youtube_whitelist(conn, session.id, Some(whitelist_id));
-                        session.youtube_whitelist_id = Some(whitelist_id.to_string());
-                    }
-                    json!({
-                        "type": "session_started",
-                        "session": session
-                    })
-                }
-                Err(e) => json!({
+            let whitelist_id = msg.get("youtubeWhitelistId").and_then(Value::as_str);
+
+            match db::start_session_validated(conn, goal, minutes, whitelist_id) {
+                Ok(session) => json!({
+                    "type": "session_started",
+                    "session": session
+                }),
+                Err(err_msg) => json!({
                     "type": "error",
-                    "message": format!("Failed to start session: {}", e)
+                    "message": err_msg
                 }),
             }
         }
         "end_session" => {
-            let target_id = msg.get("sessionId").and_then(Value::as_i64).or_else(|| {
-                db::get_active_session(conn).ok().flatten().map(|s| s.id)
-            });
-            if let Some(id) = target_id {
-                match db::end_session(conn, id) {
-                    Ok(ended) => json!({
-                        "type": "session_ended",
-                        "session": ended
-                    }),
-                    Err(e) => json!({
-                        "type": "error",
-                        "message": format!("Failed to end session: {}", e)
-                    }),
-                }
+            let session_id = msg.get("sessionId").and_then(Value::as_i64);
+            let res = if let Some(id) = session_id {
+                db::end_session(conn, id).map(Some).map_err(|e| e.to_string())
             } else {
-                json!({
+                db::end_active_session(conn)
+            };
+
+            match res {
+                Ok(Some(ended)) => json!({
+                    "type": "session_ended",
+                    "session": ended
+                }),
+                Ok(None) => json!({
                     "type": "error",
                     "message": "No active session to end"
-                })
+                }),
+                Err(err_msg) => json!({
+                    "type": "error",
+                    "message": err_msg
+                }),
             }
         }
         "set_session_youtube_whitelist" => {
@@ -481,5 +478,50 @@ mod tests {
         let resp2 = read_message(&mut out_cursor).unwrap().unwrap();
         assert_eq!(resp2.get("type").and_then(Value::as_str), Some("blacklist"));
         assert!(resp2.get("items").unwrap().as_array().unwrap().len() >= 3);
+    }
+
+    #[test]
+    fn test_start_session_validation_duplicate_rejected() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init_db(&conn).unwrap();
+
+        // 1. First session succeeds
+        let start1 = json!({
+            "type": "start_session",
+            "goal": "Phiên 1",
+            "plannedMinutes": 30
+        });
+        let resp1 = process_message(&start1, &conn);
+        assert_eq!(
+            resp1.get("type").and_then(Value::as_str),
+            Some("session_started")
+        );
+
+        // 2. Second session while first is active fails
+        let start2 = json!({
+            "type": "start_session",
+            "goal": "Phiên 2",
+            "plannedMinutes": 45
+        });
+        let resp2 = process_message(&start2, &conn);
+        assert_eq!(resp2.get("type").and_then(Value::as_str), Some("error"));
+        let err_msg = resp2.get("message").and_then(Value::as_str).unwrap();
+        assert!(err_msg.contains("A session is already active"));
+        assert!(err_msg.contains("Phiên 1"));
+
+        // 3. End session
+        let end_msg = json!({"type": "end_session"});
+        let resp_end = process_message(&end_msg, &conn);
+        assert_eq!(
+            resp_end.get("type").and_then(Value::as_str),
+            Some("session_ended")
+        );
+
+        // 4. Now starting session succeeds
+        let resp3 = process_message(&start2, &conn);
+        assert_eq!(
+            resp3.get("type").and_then(Value::as_str),
+            Some("session_started")
+        );
     }
 }

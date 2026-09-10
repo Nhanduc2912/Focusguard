@@ -86,7 +86,16 @@ def main():
     session_id = session_resp.get("session", {}).get("id")
     step += 1
 
-    # 3. Test check_url with Facebook during active session (Requirement 1)
+    # 3. Test duplicate start_session rejection while session is active
+    dup_resp = run_step(proc, step, "Attempt Duplicate start_session (Should Reject)", {
+        "type": "start_session",
+        "goal": "Phiên xao nhãng thứ hai",
+        "plannedMinutes": 30
+    })
+    assert dup_resp.get("type") == "error", f"Expected error, got {dup_resp}"
+    step += 1
+
+    # 4. Test check_url with Facebook during active session (Requirement 1)
     run_step(proc, step, "Check Facebook with Active Session (Should Block)", {
         "type": "check_url",
         "url": "https://www.facebook.com/messages"

@@ -23,40 +23,15 @@ pub fn start_session(
     goal: String,
     minutes: i64,
 ) -> Result<SessionRecord, String> {
-    let trimmed_goal = goal.trim();
-    if trimmed_goal.is_empty() {
-        return Err("Session goal cannot be empty".to_string());
-    }
-    if minutes <= 0 {
-        return Err("Planned minutes must be greater than 0".to_string());
-    }
-
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-
-    // Check if there is already an active session
-    if let Some(active) = db::get_active_session(&conn).map_err(|e| e.to_string())? {
-        return Err(format!(
-            "A session is already active (id: {}, goal: '{}')",
-            active.id, active.goal
-        ));
-    }
-
-    db::create_session(&conn, trimmed_goal, minutes).map_err(|e| e.to_string())
+    db::start_session_validated(&conn, &goal, minutes, None)
 }
 
 /// Tauri command: End the current active session
 #[tauri::command]
 pub fn end_session(state: State<'_, AppState>) -> Result<Option<SessionRecord>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-
-    let active = db::get_active_session(&conn).map_err(|e| e.to_string())?;
-    match active {
-        Some(session) => {
-            let ended = db::end_session(&conn, session.id).map_err(|e| e.to_string())?;
-            Ok(Some(ended))
-        }
-        None => Ok(None),
-    }
+    db::end_active_session(&conn)
 }
 
 /// Tauri command: Get current active session
