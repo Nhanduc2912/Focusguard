@@ -9,6 +9,7 @@ pub struct SessionRecord {
     pub planned_minutes: i64,
     pub started_at: String,
     pub ended_at: Option<String>,
+    pub youtube_whitelist_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -49,7 +50,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             goal TEXT NOT NULL,
             planned_minutes INTEGER NOT NULL,
             started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-            ended_at TEXT
+            ended_at TEXT,
+            youtube_whitelist_id TEXT
         );
 
         CREATE TABLE IF NOT EXISTS distractions (
@@ -73,6 +75,9 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_distractions_session_id ON distractions(session_id);
         CREATE INDEX IF NOT EXISTS idx_blacklist_name ON blacklist(name);",
     )?;
+
+    // Safe migration: add youtube_whitelist_id column if table existed from earlier versions
+    let _ = conn.execute("ALTER TABLE sessions ADD COLUMN youtube_whitelist_id TEXT;", []);
 
     // Seed default presets if blacklist is empty
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM blacklist;", [], |row| row.get(0))?;
@@ -111,14 +116,14 @@ pub fn init_db(conn: &Connection) -> Result<()> {
 /// Create and start a new focus session
 pub fn create_session(conn: &Connection, goal: &str, planned_minutes: i64) -> Result<SessionRecord> {
     conn.execute(
-        "INSERT INTO sessions (goal, planned_minutes, started_at, ended_at) 
-         VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), NULL);",
+        "INSERT INTO sessions (goal, planned_minutes, started_at, ended_at, youtube_whitelist_id) 
+         VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), NULL, NULL);",
         params![goal, planned_minutes],
     )?;
 
     let id = conn.last_insert_rowid();
     conn.query_row(
-        "SELECT id, goal, planned_minutes, started_at, ended_at FROM sessions WHERE id = ?1;",
+        "SELECT id, goal, planned_minutes, started_at, ended_at, youtube_whitelist_id FROM sessions WHERE id = ?1;",
         params![id],
         |row| {
             Ok(SessionRecord {
@@ -127,6 +132,7 @@ pub fn create_session(conn: &Connection, goal: &str, planned_minutes: i64) -> Re
                 planned_minutes: row.get(2)?,
                 started_at: row.get(3)?,
                 ended_at: row.get(4)?,
+                youtube_whitelist_id: row.get(5)?,
             })
         },
     )
@@ -141,7 +147,7 @@ pub fn end_session(conn: &Connection, session_id: i64) -> Result<SessionRecord> 
     )?;
 
     conn.query_row(
-        "SELECT id, goal, planned_minutes, started_at, ended_at FROM sessions WHERE id = ?1;",
+        "SELECT id, goal, planned_minutes, started_at, ended_at, youtube_whitelist_id FROM sessions WHERE id = ?1;",
         params![session_id],
         |row| {
             Ok(SessionRecord {
@@ -150,15 +156,29 @@ pub fn end_session(conn: &Connection, session_id: i64) -> Result<SessionRecord> 
                 planned_minutes: row.get(2)?,
                 started_at: row.get(3)?,
                 ended_at: row.get(4)?,
+                youtube_whitelist_id: row.get(5)?,
             })
         },
     )
 }
 
+/// Set or clear the YouTube whitelist video ID for a session
+pub fn set_session_youtube_whitelist(
+    conn: &Connection,
+    session_id: i64,
+    video_id: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE sessions SET youtube_whitelist_id = ?1 WHERE id = ?2;",
+        params![video_id, session_id],
+    )?;
+    Ok(())
+}
+
 /// Get currently active (unended) session, if one exists
 pub fn get_active_session(conn: &Connection) -> Result<Option<SessionRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT id, goal, planned_minutes, started_at, ended_at FROM sessions 
+        "SELECT id, goal, planned_minutes, started_at, ended_at, youtube_whitelist_id FROM sessions 
          WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1;",
     )?;
 
@@ -170,6 +190,7 @@ pub fn get_active_session(conn: &Connection) -> Result<Option<SessionRecord>> {
             planned_minutes: row.get(2)?,
             started_at: row.get(3)?,
             ended_at: row.get(4)?,
+            youtube_whitelist_id: row.get(5)?,
         }))
     } else {
         Ok(None)
@@ -362,6 +383,21 @@ pub mod tests {
         let ended = end_session(&conn, session.id).expect("failed to end session");
         assert!(ended.ended_at.is_some());
         assert!(get_active_session(&conn).expect("query error").is_none());
+    }
+
+    #[test]
+    fn test_session_youtube_whitelist() {
+        let conn = setup_test_db();
+        let session = create_session(&conn, "Study with Video", 30).expect("create session");
+        assert!(session.youtube_whitelist_id.is_none());
+
+        set_session_youtube_whitelist(&conn, session.id, Some("dQw4w9WgXcQ")).expect("set whitelist");
+        let active = get_active_session(&conn).expect("query error").expect("active session");
+        assert_eq!(active.youtube_whitelist_id.as_deref(), Some("dQw4w9WgXcQ"));
+
+        set_session_youtube_whitelist(&conn, session.id, None).expect("clear whitelist");
+        let active2 = get_active_session(&conn).expect("query error").expect("active session");
+        assert!(active2.youtube_whitelist_id.is_none());
     }
 
     #[test]

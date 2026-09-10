@@ -72,6 +72,46 @@ pub fn get_app_db_path() -> PathBuf {
     PathBuf::from("focusguard.db")
 }
 
+/// Check if a given YouTube URL contains the designated whitelisted video ID
+pub fn is_youtube_video_whitelisted(url: &str, target_id: &str) -> bool {
+    let target = target_id.trim();
+    if target.is_empty() {
+        return false;
+    }
+    let lower_url = url.to_lowercase();
+    let lower_target = target.to_lowercase();
+
+    // Check v=target query parameter (e.g. ?v=abc123 or &v=abc123)
+    let v_param = format!("v={}", lower_target);
+    if let Some(pos) = lower_url.find(&v_param) {
+        let end = pos + v_param.len();
+        if end == lower_url.len()
+            || lower_url[end..].starts_with('&')
+            || lower_url[end..].starts_with('#')
+        {
+            return true;
+        }
+    }
+
+    // Check embed, shorts, or youtu.be path prefixes
+    for prefix in ["/embed/", "/shorts/", "youtu.be/"] {
+        let pat = format!("{}{}", prefix, lower_target);
+        if let Some(pos) = lower_url.find(&pat) {
+            let end = pos + pat.len();
+            if end == lower_url.len()
+                || lower_url[end..].starts_with('?')
+                || lower_url[end..].starts_with('&')
+                || lower_url[end..].starts_with('/')
+                || lower_url[end..].starts_with('#')
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /// Process a single protocol message and compute response
 pub fn process_message(msg: &Value, conn: &Connection) -> Value {
     let msg_type = msg.get("type").and_then(Value::as_str).unwrap_or("unknown");
@@ -90,6 +130,72 @@ pub fn process_message(msg: &Value, conn: &Connection) -> Value {
                 "monitoredBrowsers": monitored_browsers
             })
         }
+        "start_session" => {
+            let goal = msg.get("goal").and_then(Value::as_str).unwrap_or("Tập trung");
+            let minutes = msg.get("plannedMinutes").and_then(Value::as_i64).unwrap_or(30);
+            match db::create_session(conn, goal, minutes) {
+                Ok(mut session) => {
+                    if let Some(whitelist_id) = msg.get("youtubeWhitelistId").and_then(Value::as_str) {
+                        let _ = db::set_session_youtube_whitelist(conn, session.id, Some(whitelist_id));
+                        session.youtube_whitelist_id = Some(whitelist_id.to_string());
+                    }
+                    json!({
+                        "type": "session_started",
+                        "session": session
+                    })
+                }
+                Err(e) => json!({
+                    "type": "error",
+                    "message": format!("Failed to start session: {}", e)
+                }),
+            }
+        }
+        "end_session" => {
+            let target_id = msg.get("sessionId").and_then(Value::as_i64).or_else(|| {
+                db::get_active_session(conn).ok().flatten().map(|s| s.id)
+            });
+            if let Some(id) = target_id {
+                match db::end_session(conn, id) {
+                    Ok(ended) => json!({
+                        "type": "session_ended",
+                        "session": ended
+                    }),
+                    Err(e) => json!({
+                        "type": "error",
+                        "message": format!("Failed to end session: {}", e)
+                    }),
+                }
+            } else {
+                json!({
+                    "type": "error",
+                    "message": "No active session to end"
+                })
+            }
+        }
+        "set_session_youtube_whitelist" => {
+            let target_id = msg.get("sessionId").and_then(Value::as_i64).or_else(|| {
+                db::get_active_session(conn).ok().flatten().map(|s| s.id)
+            });
+            let video_id = msg.get("videoId").and_then(Value::as_str);
+            if let Some(id) = target_id {
+                match db::set_session_youtube_whitelist(conn, id, video_id) {
+                    Ok(_) => json!({
+                        "type": "youtube_whitelist_updated",
+                        "sessionId": id,
+                        "youtubeWhitelistId": video_id
+                    }),
+                    Err(e) => json!({
+                        "type": "error",
+                        "message": format!("Failed to update YouTube whitelist: {}", e)
+                    }),
+                }
+            } else {
+                json!({
+                    "type": "error",
+                    "message": "No active session to configure"
+                })
+            }
+        }
         "get_blacklist" => {
             let items = db::get_blacklist(conn).unwrap_or_default();
             json!({
@@ -103,25 +209,42 @@ pub fn process_message(msg: &Value, conn: &Connection) -> Value {
             if let Some(session) = active_session {
                 let blacklist = db::get_blacklist(conn).unwrap_or_default();
                 let lower_url = url.to_lowercase();
-                let mut matched_rule = None;
+                let mut matched_rule: Option<String> = None;
+                let mut is_blocked = false;
+                let mut is_whitelisted = false;
 
                 for item in blacklist {
                     let name = item.name.to_lowercase();
                     if (item.item_type == "domain" || item.item_type == "website")
                         && lower_url.contains(&name)
                     {
-                        matched_rule = Some(item.name);
-                        break;
+                        if name == "youtube.com" || name == "youtu.be" {
+                            if let Some(ref whitelist_id) = session.youtube_whitelist_id {
+                                if is_youtube_video_whitelisted(url, whitelist_id) {
+                                    is_whitelisted = true;
+                                    is_blocked = false;
+                                    matched_rule = None;
+                                    break;
+                                }
+                            }
+                            is_blocked = true;
+                            matched_rule = Some(item.name);
+                            break;
+                        } else {
+                            is_blocked = true;
+                            matched_rule = Some(item.name);
+                            break;
+                        }
                     }
                 }
 
-                let blocked = matched_rule.is_some();
                 json!({
                     "type": "check_url_result",
-                    "blocked": blocked,
+                    "blocked": is_blocked,
                     "matched": matched_rule,
                     "sessionId": session.id,
-                    "sessionGoal": session.goal
+                    "sessionGoal": session.goal,
+                    "whitelisted": is_whitelisted
                 })
             } else {
                 json!({
@@ -275,6 +398,66 @@ mod tests {
         let allowed_msg = json!({"type": "check_url", "url": "https://docs.rs/byteorder"});
         let resp = process_message(&allowed_msg, &conn);
         assert_eq!(resp.get("blocked").and_then(Value::as_bool), Some(false));
+    }
+
+    #[test]
+    fn test_youtube_per_video_whitelist_cases() {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init_db(&conn).unwrap();
+
+        // Start session without whitelist
+        let session = db::create_session(&conn, "Deep Work", 45).unwrap();
+
+        // Case (a): session không có whitelist, url youtube bất kỳ -> blocked: true
+        let check_yt_random = json!({
+            "type": "check_url",
+            "url": "https://www.youtube.com/watch?v=whatever123"
+        });
+        let resp_a = process_message(&check_yt_random, &conn);
+        assert_eq!(resp_a.get("blocked").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            resp_a.get("matched").and_then(Value::as_str),
+            Some("youtube.com")
+        );
+        assert_eq!(
+            resp_a.get("sessionId").and_then(Value::as_i64),
+            Some(session.id)
+        );
+
+        // Update session with whitelist video "abc123"
+        db::set_session_youtube_whitelist(&conn, session.id, Some("abc123")).unwrap();
+
+        // Case (b): session có whitelist video "abc123", url là chính video đó -> blocked: false
+        let check_yt_whitelisted = json!({
+            "type": "check_url",
+            "url": "https://www.youtube.com/watch?v=abc123"
+        });
+        let resp_b = process_message(&check_yt_whitelisted, &conn);
+        assert_eq!(resp_b.get("blocked").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            resp_b.get("whitelisted").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            resp_b.get("sessionId").and_then(Value::as_i64),
+            Some(session.id)
+        );
+
+        // Case (c): cùng session đó, url là video khác "xyz789" -> blocked: true
+        let check_yt_other = json!({
+            "type": "check_url",
+            "url": "https://www.youtube.com/watch?v=xyz789"
+        });
+        let resp_c = process_message(&check_yt_other, &conn);
+        assert_eq!(resp_c.get("blocked").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            resp_c.get("matched").and_then(Value::as_str),
+            Some("youtube.com")
+        );
+        assert_eq!(
+            resp_c.get("sessionId").and_then(Value::as_i64),
+            Some(session.id)
+        );
     }
 
     #[test]

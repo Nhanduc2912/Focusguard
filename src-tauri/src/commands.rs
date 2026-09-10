@@ -66,6 +66,18 @@ pub fn get_active_session(state: State<'_, AppState>) -> Result<Option<SessionRe
     db::get_active_session(&conn).map_err(|e| e.to_string())
 }
 
+/// Tauri command: Set or clear YouTube whitelist video ID for a session
+#[tauri::command]
+pub fn set_session_youtube_whitelist(
+    state: State<'_, AppState>,
+    session_id: i64,
+    video_id: Option<String>,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::set_session_youtube_whitelist(&conn, session_id, video_id.as_deref())
+        .map_err(|e| e.to_string())
+}
+
 /// Tauri command: Get past session history with distraction stats
 #[tauri::command]
 pub fn get_history(state: State<'_, AppState>) -> Result<Vec<SessionWithStats>, String> {

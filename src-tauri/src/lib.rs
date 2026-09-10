@@ -59,6 +59,7 @@ pub fn run() {
             commands::get_latest_distraction,
             commands::detect_installed_browsers,
             commands::set_browser_monitored,
+            commands::set_session_youtube_whitelist,
         ])
         .run(tauri::generate_context!())
         .expect("error while running FocusGuard application");
